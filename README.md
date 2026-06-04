@@ -131,6 +131,10 @@ and scales to a floor when idle.
 │   ├── worker-image/       Go    — image processing worker
 │   ├── worker-ocr/         Python— OCR worker
 │   └── realtime-gateway/   TS    — WebSocket fan-out
+├── specs/                  Contract-first specs (single source of truth)
+│   ├── schemas/            Canonical JSON Schemas (Job, Event, Artifact)
+│   ├── asyncapi.yaml       Message contracts → $ref schemas
+│   └── openapi.yaml        REST contracts    → $ref schemas
 ├── deploy/
 │   ├── k8s/                Kustomize base + prod overlay
 │   └── helm/mediaforge/    Helm chart (HPA, deployments, services)
@@ -141,6 +145,25 @@ and scales to a floor when idle.
 ├── docker-compose.yml      full local stack
 └── .github/workflows/      CI: lint, test, build images
 ```
+
+## Contract-first (spec-driven)
+
+Because the platform is polyglot, the Job/Event/Artifact shapes used to live
+duplicated across Go, Python and TypeScript. They now live **once**, as canonical
+JSON Schemas under [`specs/schemas`](specs/), referenced by both the AsyncAPI
+(messages) and OpenAPI (REST) documents **and** by a contract test in every
+service:
+
+| Service | Contract test | Validator |
+|---|---|---|
+| api-gateway (Go) | `internal/media/contract_schema_test.go` | santhosh-tekuri/jsonschema |
+| worker-image (Go) | `internal/broker/contract_schema_test.go` | santhosh-tekuri/jsonschema |
+| worker-ocr (Python) | `tests/test_contract.py` | jsonschema |
+| realtime-gateway (TS) | `src/contract.test.ts` | ajv |
+
+If any service diverges from the contract, its test fails in CI; the specs
+themselves are linted by the `spec-lint` CI job (AsyncAPI CLI + Redocly). See
+[`specs/README.md`](specs/README.md).
 
 ## Engineering highlights
 

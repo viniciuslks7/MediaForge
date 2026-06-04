@@ -1,0 +1,96 @@
+asyncapi: 3.0.0
+info:
+  title: MediaForge Event API
+  version: 0.1.0
+  description: >
+    Asynchronous message contracts for MediaForge. The gateway publishes work on
+    the `media.jobs` topic exchange; workers consume it and publish lifecycle
+    events on `media.events`, which the realtime-gateway fans out to WebSocket
+    clients. Message payloads reference the canonical JSON Schemas under
+    `./schemas`, the single source of truth also used by the per-service
+    contract tests.
+  license:
+    name: MIT
+
+servers:
+  rabbitmq:
+    host: rabbitmq:5672
+    protocol: amqp
+    description: RabbitMQ broker (AMQP 0-9-1).
+
+channels:
+  mediaJobs:
+    address: media.jobs
+    description: Topic exchange carrying media processing jobs.
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: media.jobs
+          type: topic
+          durable: true
+    messages:
+      job:
+        $ref: '#/components/messages/Job'
+
+  mediaEvents:
+    address: media.events
+    description: Topic exchange carrying job lifecycle events.
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: media.events
+          type: topic
+          durable: true
+    messages:
+      event:
+        $ref: '#/components/messages/Event'
+
+operations:
+  publishJob:
+    action: send
+    channel:
+      $ref: '#/channels/mediaJobs'
+    summary: Gateway publishes a job (routing key image.process | ocr.extract).
+    messages:
+      - $ref: '#/channels/mediaJobs/messages/job'
+
+  consumeJob:
+    action: receive
+    channel:
+      $ref: '#/channels/mediaJobs'
+    summary: Workers consume jobs from q.image / q.ocr.
+    messages:
+      - $ref: '#/channels/mediaJobs/messages/job'
+
+  publishEvent:
+    action: send
+    channel:
+      $ref: '#/channels/mediaEvents'
+    summary: Workers emit lifecycle events (routing key event.<kind>).
+    messages:
+      - $ref: '#/channels/mediaEvents/messages/event'
+
+  consumeEvent:
+    action: receive
+    channel:
+      $ref: '#/channels/mediaEvents'
+    summary: realtime-gateway consumes events (binding event.#) and fans them out.
+    messages:
+      - $ref: '#/channels/mediaEvents/messages/event'
+
+components:
+  messages:
+    Job:
+      name: Job
+      title: Media job
+      contentType: application/json
+      payload:
+        $ref: './schemas/job.schema.json'
+    Event:
+      name: Event
+      title: Job lifecycle event
+      contentType: application/json
+      payload:
+        $ref: './schemas/event.schema.json'

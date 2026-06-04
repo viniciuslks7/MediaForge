@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mediaforge.dev/schemas/event.schema.json",
+  "title": "Event",
+  "description": "A job lifecycle event, emitted by any service on the media.events exchange and fanned out to WebSocket clients by the realtime-gateway.",
+  "type": "object",
+  "properties": {
+    "job_id": { "type": "string" },
+    "kind": { "type": "string", "enum": ["image", "ocr"] },
+    "status": {
+      "type": "string",
+      "enum": ["pending", "processing", "completed", "failed"]
+    },
+    "message": { "type": "string" },
+    "progress": { "type": "integer", "minimum": 0, "maximum": 100 },
+    "artifact": { "type": "string" },
+    "ts": {
+      "type": "integer",
+      "description": "Event timestamp in Unix milliseconds.",
+      "minimum": 0
+    }
+  },
+  "required": ["job_id", "kind", "status", "progress", "ts"],
+  "additionalProperties": false
+}

@@ -62,9 +62,22 @@ jobs:
       - run: npm run build
       - run: npm test
 
+  spec-lint:
+    name: Contracts (AsyncAPI + OpenAPI)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Validate AsyncAPI
+        run: npx -y @asyncapi/cli@latest validate specs/asyncapi.yaml
+      - name: Lint OpenAPI
+        run: npx -y @redocly/cli@latest lint specs/openapi.yaml --config specs/redocly.yaml
+
   docker:
     name: Build images
-    needs: [go, python, node]
+    needs: [go, python, node, spec-lint]
     runs-on: ubuntu-latest
     strategy:
       matrix:

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mediaforge.dev/schemas/artifact.schema.json",
+  "title": "Artifact",
+  "description": "An output produced by a worker (a thumbnail, a webp, the extracted text, ...). Persisted in Postgres and surfaced by the REST API with a presigned download URL.",
+  "type": "object",
+  "properties": {
+    "job_id": { "type": "string" },
+    "name": {
+      "type": "string",
+      "description": "Logical artifact name.",
+      "examples": ["resized", "thumbnail", "webp", "text"]
+    },
+    "object_key": { "type": "string" },
+    "content_type": { "type": "string" },
+    "size_bytes": { "type": "integer", "minimum": 0 },
+    "metadata": { "type": "object" },
+    "created_at": { "type": "string" },
+    "url": {
+      "type": "string",
+      "description": "Presigned download URL, added by the API on read."
+    }
+  },
+  "required": ["name", "object_key", "content_type"],
+  "additionalProperties": false
+}

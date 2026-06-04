@@ -9,6 +9,7 @@ require (
 	github.com/minio/minio-go/v7 v7.0.77
 	github.com/prometheus/client_golang v1.20.5
 	github.com/rabbitmq/amqp091-go v1.10.0
+	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
 	golang.org/x/image v0.24.0
 )
 

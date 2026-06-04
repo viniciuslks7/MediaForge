@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mediaforge.dev/schemas/job.schema.json",
+  "title": "Job",
+  "description": "A unit of media work, published by the gateway on the media.jobs exchange and consumed by the workers. This schema is the single source of truth shared by the Go, Python and TypeScript contract tests.",
+  "type": "object",
+  "properties": {
+    "job_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Stable job identifier; also the idempotency key."
+    },
+    "kind": {
+      "type": "string",
+      "enum": ["image", "ocr"],
+      "description": "Pipeline the job flows through."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["pending", "processing", "completed", "failed"]
+    },
+    "source_key": {
+      "type": "string",
+      "description": "Object-storage key of the uploaded original.",
+      "minLength": 1
+    },
+    "source_mime": { "type": "string" },
+    "size_bytes": { "type": "integer", "minimum": 0 },
+    "operations": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["resize", "thumbnail", "webp"] },
+      "uniqueItems": true,
+      "description": "Image transformations to apply (image jobs only)."
+    },
+    "attempt": { "type": "integer", "minimum": 0 },
+    "created_at": { "type": "string" },
+    "updated_at": { "type": "string" }
+  },
+  "required": ["job_id", "kind", "status", "source_key"],
+  "additionalProperties": false
+}

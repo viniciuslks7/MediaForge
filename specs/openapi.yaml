@@ -1,0 +1,116 @@
+openapi: 3.1.0
+info:
+  title: MediaForge Ingestion API
+  version: 0.1.0
+  description: >
+    REST surface of the MediaForge gateway: submit media for processing and read
+    job status. Response schemas reference the canonical JSON Schemas under
+    `./schemas`.
+  license:
+    name: MIT
+    identifier: MIT
+
+servers:
+  - url: http://localhost:8080
+    description: Local Docker Compose
+
+paths:
+  /v1/media:
+    post:
+      operationId: submitMedia
+      summary: Submit a media file for processing.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The media file to process.
+                kind:
+                  type: string
+                  enum: [image, ocr]
+                  description: Override the auto-detected kind.
+                operations:
+                  type: string
+                  description: Comma-separated image operations, e.g. "resize,thumbnail,webp".
+              required: [file]
+      responses:
+        '202':
+          description: Job accepted and enqueued.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job_id: { type: string, format: uuid }
+                  kind: { type: string, enum: [image, ocr] }
+                  status: { type: string, enum: [pending] }
+                required: [job_id, kind, status]
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+
+  /v1/media/{id}:
+    get:
+      operationId: getMedia
+      summary: Fetch a job and its artifacts.
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Job found.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job:
+                    $ref: './schemas/job.schema.json'
+                  artifacts:
+                    type: array
+                    items:
+                      $ref: './schemas/artifact.schema.json'
+                required: [job, artifacts]
+        '400': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /healthz:
+    get:
+      operationId: health
+      summary: Liveness probe.
+      security: []
+      responses:
+        '200':
+          description: Service is up.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  responses:
+    Error:
+      description: Error response.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error: { type: string }
+            required: [error]

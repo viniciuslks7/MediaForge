@@ -21,6 +21,8 @@
     "ws": "^8.18.0"
   },
   "devDependencies": {
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
     "@types/amqplib": "^0.10.5",
     "@types/node": "^22.5.0",
     "@types/ws": "^8.5.12",

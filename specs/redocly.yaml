@@ -1,0 +1,9 @@
+# Redocly lint configuration for the MediaForge OpenAPI spec.
+extends:
+  - recommended
+
+rules:
+  # localhost is the intentional default server for local Docker Compose dev.
+  no-server-example.com: off
+  # health/metrics probes legitimately have no 4XX responses.
+  operation-4xx-response: off
