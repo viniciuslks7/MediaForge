@@ -1,0 +1,37 @@
+groups:
+  - name: mediaforge
+    rules:
+      - alert: ApiHighErrorRate
+        expr: |
+          sum(rate(mediaforge_api_http_requests_total{status="5xx"}[5m]))
+            /
+          sum(rate(mediaforge_api_http_requests_total[5m])) > 0.05
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "API gateway 5xx rate above 5%"
+          description: "More than 5% of requests are failing over the last 5 minutes."
+
+      - alert: ImageJobsParking
+        expr: increase(mediaforge_image_worker_jobs_processed_total{outcome="parked"}[10m]) > 0
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: "Image jobs are being parked (exhausted retries)"
+          description: "At least one image job exhausted its retries in the last 10 minutes."
+
+      - alert: OcrWorkerDown
+        expr: up{job="worker-ocr"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "OCR worker is not being scraped"
+          description: "Prometheus cannot scrape the OCR worker — it may be down."
+
+      - alert: SlowImageProcessing
+        expr: histogram_quantile(0.95, sum(rate(mediaforge_image_worker_job_duration_seconds_bucket[5m])) by (le)) > 5
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "p95 image processing latency above 5s"
+          description: "Image jobs are taking unusually long — consider scaling workers."

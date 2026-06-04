@@ -1,0 +1,88 @@
+image:
+  registry: ghcr.io/viniciusoliveira
+  tag: latest
+  pullPolicy: IfNotPresent
+
+# Shared, non-secret configuration injected into every service.
+config:
+  RABBITMQ_PREFETCH: "16"
+  RABBITMQ_MAX_RETRIES: "5"
+  RABBITMQ_RETRY_TTL_MS: "10000"
+  REDIS_ADDR: "redis:6379"
+  S3_ENDPOINT: "minio:9000"
+  S3_BUCKET: "mediaforge"
+  S3_USE_SSL: "false"
+  S3_REGION: "us-east-1"
+  OCR_LANGUAGES: "eng+por"
+  OCR_TESSERACT_CMD: "tesseract"
+
+# Secrets. Override with --set-string or a SealedSecret in real deployments.
+secret:
+  API_AUTH_TOKEN: "change-me-in-prod"
+  POSTGRES_DSN: "postgres://mediaforge:mediaforge@postgres:5432/mediaforge?sslmode=disable"
+  RABBITMQ_URL: "amqp://guest:guest@rabbitmq:5672/"
+  S3_ACCESS_KEY: "minioadmin"
+  S3_SECRET_KEY: "minioadmin"
+
+# Per-service definitions. The generic templates render a Deployment (+Service,
+# +HPA) for each entry.
+services:
+  api-gateway:
+    image: mediaforge-api-gateway
+    replicas: 2
+    port: 8080
+    httpProbe: true
+    probePath: /healthz
+    expose: true
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 6
+      targetCPUUtilizationPercentage: 70
+    resources:
+      requests: { cpu: 100m, memory: 128Mi }
+      limits: { cpu: 500m, memory: 256Mi }
+
+  worker-image:
+    image: mediaforge-worker-image
+    replicas: 2
+    port: 9102
+    httpProbe: true
+    probePath: /healthz
+    expose: false
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 20
+      targetCPUUtilizationPercentage: 65
+    resources:
+      requests: { cpu: 250m, memory: 256Mi }
+      limits: { cpu: "1", memory: 512Mi }
+
+  worker-ocr:
+    image: mediaforge-worker-ocr
+    replicas: 2
+    port: 9103
+    httpProbe: false
+    expose: false
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 15
+      targetCPUUtilizationPercentage: 70
+    resources:
+      requests: { cpu: 250m, memory: 384Mi }
+      limits: { cpu: "1", memory: 768Mi }
+
+  realtime-gateway:
+    image: mediaforge-realtime-gateway
+    replicas: 2
+    port: 8090
+    httpProbe: true
+    probePath: /healthz
+    expose: true
+    autoscaling:
+      enabled: false
+    resources:
+      requests: { cpu: 100m, memory: 128Mi }
+      limits: { cpu: 500m, memory: 256Mi }

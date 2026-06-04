@@ -1,0 +1,14 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+  namespace: mediaforge
+spec:
+  replicas: 3
+  template:
+    spec:
+      containers:
+        - name: api-gateway
+          resources:
+            requests: { cpu: "200m", memory: "192Mi" }
+            limits: { cpu: "1", memory: "384Mi" }

@@ -1,0 +1,14 @@
+MediaForge {{ .Chart.AppVersion }} installed as release "{{ .Release.Name }}".
+
+Services deployed:
+{{- range $name, $svc := .Values.services }}
+  - {{ $name }} (replicas: {{ $svc.replicas }}, port: {{ $svc.port }}{{ if $svc.expose }}, exposed{{ end }})
+{{- end }}
+
+Port-forward the API to try it locally:
+
+  kubectl -n mediaforge port-forward svc/api-gateway 8080:8080
+
+Then submit a job:
+
+  curl -F "file=@./sample.jpg" http://localhost:8080/v1/media

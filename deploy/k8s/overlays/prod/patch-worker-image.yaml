@@ -1,0 +1,14 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker-image
+  namespace: mediaforge
+spec:
+  replicas: 4
+  template:
+    spec:
+      containers:
+        - name: worker-image
+          resources:
+            requests: { cpu: "500m", memory: "384Mi" }
+            limits: { cpu: "2", memory: "768Mi" }

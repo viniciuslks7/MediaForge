@@ -1,0 +1,25 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: mediaforge
+
+resources:
+  - ../../base
+
+# Pin all images to a single release tag in CI: `kustomize edit set image ...`
+images:
+  - name: ghcr.io/viniciusoliveira/mediaforge-api-gateway
+    newTag: stable
+  - name: ghcr.io/viniciusoliveira/mediaforge-worker-image
+    newTag: stable
+  - name: ghcr.io/viniciusoliveira/mediaforge-worker-ocr
+    newTag: stable
+  - name: ghcr.io/viniciusoliveira/mediaforge-realtime-gateway
+    newTag: stable
+
+# Bump app-tier baseline capacity for production. Infra deployments are left
+# untouched (single-replica demo infra is expected to be swapped for managed
+# services in real environments).
+patches:
+  - path: patch-api-gateway.yaml
+  - path: patch-worker-image.yaml

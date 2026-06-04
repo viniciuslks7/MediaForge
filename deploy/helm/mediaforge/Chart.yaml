@@ -1,0 +1,13 @@
+apiVersion: v2
+name: mediaforge
+description: Distributed, event-driven media processing platform (Go/Python/TS, RabbitMQ).
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - media
+  - microservices
+  - rabbitmq
+  - kubernetes
+maintainers:
+  - name: Vinicius Oliveira

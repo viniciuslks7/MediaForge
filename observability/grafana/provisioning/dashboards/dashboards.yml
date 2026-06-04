@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: MediaForge
+    orgId: 1
+    folder: MediaForge
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /var/lib/grafana/dashboards

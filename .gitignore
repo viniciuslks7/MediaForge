@@ -1,0 +1,37 @@
+# Env / secrets
+.env
+*.local
+
+# Go
+/bin/
+*.exe
+*.test
+*.out
+vendor/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node / TS
+node_modules/
+dist/
+*.tsbuildinfo
+npm-debug.log*
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Data volumes (local)
+.data/
+tmp/
+*.log
