@@ -5,6 +5,10 @@ set -euo pipefail
 
 API="${API:-http://localhost:8080}"
 SAMPLE="${SAMPLE:-/tmp/mediaforge-sample.png}"
+# Write endpoints are guarded by a bearer token (API_AUTH_TOKEN in .env).
+# Default to the local dev token; override via the environment if needed.
+TOKEN="${API_AUTH_TOKEN:-dev-local-token}"
+AUTH=(-H "Authorization: Bearer ${TOKEN}")
 
 if [[ ! -f "$SAMPLE" ]]; then
   echo "==> generating sample image at $SAMPLE"
@@ -12,7 +16,7 @@ if [[ ! -f "$SAMPLE" ]]; then
 fi
 
 echo "==> submitting $SAMPLE"
-resp=$(curl -fsS -F "file=@${SAMPLE}" -F "operations=resize,thumbnail,webp" "${API}/v1/media")
+resp=$(curl -fsS "${AUTH[@]}" -F "file=@${SAMPLE}" -F "operations=resize,thumbnail,webp" "${API}/v1/media")
 echo "$resp" | jq .
 job_id=$(echo "$resp" | jq -r .job_id)
 
