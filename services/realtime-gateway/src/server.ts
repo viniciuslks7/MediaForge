@@ -28,10 +28,19 @@ class WSClient implements Client {
  * WebSocket server at /ws driven by the supplied Hub.
  */
 export function buildServer(hub: Hub, metricsPath: string): Server {
+  // Live, per-replica counts surfaced as JSON for the control room's pulse
+  // widget (Prometheus stays the source of truth for dashboards/alerts).
+  let connected = 0;
+
   const http = createServer((req, res) => {
     if (req.url === '/healthz' || req.url === '/readyz') {
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end('{"status":"ok"}');
+      return;
+    }
+    if (req.url === '/stats') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ connected_clients: connected, tracked_jobs: hub.jobCount }));
       return;
     }
     if (req.url === metricsPath) {
@@ -55,6 +64,7 @@ export function buildServer(hub: Hub, metricsPath: string): Server {
 
   wss.on('connection', (socket) => {
     const client = new WSClient(socket);
+    connected++;
     connectedClients.inc();
 
     socket.send(JSON.stringify({ type: 'welcome', client_id: client.id }));
@@ -86,6 +96,7 @@ export function buildServer(hub: Hub, metricsPath: string): Server {
 
     socket.on('close', () => {
       hub.remove(client);
+      connected--;
       connectedClients.dec();
       trackedJobs.set(hub.jobCount);
     });

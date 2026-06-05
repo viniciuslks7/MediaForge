@@ -11,6 +11,7 @@ export default defineConfig({
     proxy: {
       '/v1': { target: 'http://localhost:8080', changeOrigin: true },
       '/healthz': { target: 'http://localhost:8080', changeOrigin: true },
+      '/stats': { target: 'http://localhost:8090', changeOrigin: true },
       '/ws': { target: 'ws://localhost:8090', ws: true },
       '/s3': {
         target: 'http://localhost:9000',
