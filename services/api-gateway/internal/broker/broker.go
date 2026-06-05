@@ -42,7 +42,7 @@ type Broker struct {
 // Connect dials RabbitMQ, opens a channel in confirm mode and declares the
 // full topology.
 func Connect(url string, retryTTL time.Duration) (*Broker, error) {
-	conn, err := amqp.Dial(url)
+	conn, err := dialWithRetry(url)
 	if err != nil {
 		return nil, fmt.Errorf("dial rabbitmq: %w", err)
 	}
@@ -61,6 +61,31 @@ func Connect(url string, retryTTL time.Duration) (*Broker, error) {
 		return nil, err
 	}
 	return b, nil
+}
+
+// dialWithRetry dials RabbitMQ with bounded exponential backoff. RabbitMQ can
+// report healthy (rabbitmq-diagnostics ping) a moment before its AMQP listener
+// accepts connections, so a single dial races the broker on a cold boot. We
+// retry for ~30s before giving up.
+func dialWithRetry(url string) (*amqp.Connection, error) {
+	const maxAttempts = 12
+	backoff := 250 * time.Millisecond
+	var lastErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		conn, err := amqp.Dial(url)
+		if err == nil {
+			return conn, nil
+		}
+		lastErr = err
+		if attempt == maxAttempts {
+			break
+		}
+		time.Sleep(backoff)
+		if backoff < 5*time.Second {
+			backoff *= 2
+		}
+	}
+	return nil, lastErr
 }
 
 func (b *Broker) declareTopology(retryTTL time.Duration) error {
