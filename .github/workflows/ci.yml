@@ -100,8 +100,8 @@ jobs:
       - name: Validate rendered Helm chart
         run: helm template mediaforge deploy/helm/mediaforge | kubeconform -strict -summary -ignore-missing-schemas
 
-  docker:
-    name: Build images
+  images:
+    name: Image build + scan (${{ matrix.service }})
     needs: [go, python, node, spec-lint]
     runs-on: ubuntu-latest
     strategy:
@@ -114,7 +114,48 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: services/${{ matrix.service }}
+          load: true
           push: false
           tags: mediaforge-${{ matrix.service }}:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      # Fail the build on fixable HIGH/CRITICAL CVEs in the image.
+      - name: Scan image (Trivy)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
+        with:
+          image-ref: mediaforge-${{ matrix.service }}:ci
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+          vuln-type: os,library
+      # Produce a CycloneDX SBOM and keep it as a build artifact (provenance).
+      - name: Generate SBOM (CycloneDX)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
+        with:
+          scan-type: image
+          image-ref: mediaforge-${{ matrix.service }}:ci
+          format: cyclonedx
+          output: sbom-${{ matrix.service }}.cdx.json
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ matrix.service }}
+          path: sbom-${{ matrix.service }}.cdx.json
+          if-no-files-found: error
+
+  iac-scan:
+    name: IaC & Dockerfile misconfig (Trivy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Report-only for now: surfaces Dockerfile/k8s misconfigurations without
+      # gating the build. Flip exit-code to "1" once the backlog is triaged.
+      - name: Trivy config scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
+        with:
+          scan-type: config
+          scan-ref: .
+          format: table
+          exit-code: "0"
+          severity: HIGH,CRITICAL

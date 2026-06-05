@@ -123,6 +123,29 @@ Workers ship with `HorizontalPodAutoscaler` definitions driven by CPU and by
 RabbitMQ queue depth (via the Prometheus adapter), so the fleet grows under load
 and scales to a floor when idle.
 
+## Performance / load testing
+
+A [k6](https://k6.io) script drives the ingestion path so you can watch the
+system behave under load:
+
+```bash
+# stack must be up (compose or k8s)
+k6 run load/k6-upload.js
+# point it elsewhere / use a real token:
+BASE_URL=http://localhost:8080 API_TOKEN=dev-local-token k6 run load/k6-upload.js
+```
+
+It ramps to 50 virtual users posting image jobs and enforces thresholds (`<1%`
+errors, `p95 < 800ms`, `>99%` accepted). While it runs, watch the story unfold:
+
+- **Grafana** (`:3000`) — `rabbitmq_queue_messages_ready` climbs, then drains as
+  workers catch up; on k8s the `worker-image` replica count rises with it.
+- **Jaeger** (`:16686`) — per-request traces from gateway → worker, including the
+  RabbitMQ hop.
+
+This is the queue-depth HPA in action: backlog drives the fleet size, not just
+CPU.
+
 ## Repository layout
 
 ```
