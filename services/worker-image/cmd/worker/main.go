@@ -125,7 +125,7 @@ func (h *handler) handle(ctx context.Context, job broker.Job, attempt int) (err 
 
 	// Idempotency: skip jobs already completed by a previous (redelivered) attempt.
 	if status, serr := h.db.Status(ctx, job.ID); serr == nil && status == "completed" {
-		log.Info("job already completed, skipping")
+		log.InfoContext(ctx, "job already completed, skipping")
 		return nil
 	}
 
@@ -161,14 +161,14 @@ func (h *handler) handle(ctx context.Context, job broker.Job, attempt int) (err 
 		return h.fail(ctx, job, attempt, fmt.Errorf("finalize: %w", err))
 	}
 	_ = h.bus.PublishEvent(ctx, broker.Event{JobID: job.ID, Kind: job.Kind, Status: "completed", Progress: 100, Message: "done"})
-	log.Info("job completed", "artifacts", len(results))
+	log.InfoContext(ctx, "job completed", "artifacts", len(results))
 	return nil
 }
 
 // fail records the error and lets the broker decide retry vs parking based on
 // the attempt count.
 func (h *handler) fail(ctx context.Context, job broker.Job, attempt int, cause error) error {
-	h.log.Warn("job failed", "job_id", job.ID, "attempt", attempt, "err", cause)
+	h.log.WarnContext(ctx, "job failed", "job_id", job.ID, "attempt", attempt, "err", cause)
 	_ = h.db.SetStatus(ctx, job.ID, "failed", cause.Error())
 	_ = h.bus.PublishEvent(ctx, broker.Event{JobID: job.ID, Kind: job.Kind, Status: "failed", Message: cause.Error()})
 	return cause

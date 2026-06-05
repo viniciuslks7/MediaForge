@@ -18,6 +18,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/viniciusoliveira/mediaforge/api-gateway/internal/broker"
 	"github.com/viniciusoliveira/mediaforge/api-gateway/internal/media"
@@ -93,7 +94,7 @@ func (s *Server) handleSubmit(w http.ResponseWriter, r *http.Request) {
 	if s.Limiter != nil {
 		ok, err := s.Limiter.Allow(ctx, clientKey(r))
 		if err != nil {
-			s.Log.Warn("rate limiter error", "err", err)
+			s.Log.WarnContext(ctx, "rate limiter error", "err", err)
 		} else if !ok {
 			writeError(w, http.StatusTooManyRequests, "rate limit exceeded")
 			return
@@ -127,7 +128,7 @@ func (s *Server) handleSubmit(w http.ResponseWriter, r *http.Request) {
 
 	size, err := s.Objects.Put(ctx, sourceKey, contentType, file, header.Size)
 	if err != nil {
-		s.Log.Error("store upload", "err", err, "job_id", jobID)
+		s.Log.ErrorContext(ctx, "store upload", "err", err, "job_id", jobID)
 		writeError(w, http.StatusBadGateway, "failed to store upload")
 		return
 	}
@@ -143,26 +144,32 @@ func (s *Server) handleSubmit(w http.ResponseWriter, r *http.Request) {
 		Params:     params,
 	}
 	if err := s.Jobs.CreateJob(ctx, job); err != nil {
-		s.Log.Error("persist job", "err", err, "job_id", jobID)
+		s.Log.ErrorContext(ctx, "persist job", "err", err, "job_id", jobID)
 		writeError(w, http.StatusInternalServerError, "failed to persist job")
 		return
 	}
 
 	if err := s.Bus.PublishJSON(ctx, broker.ExchangeJobs, kind.RoutingKey(), job); err != nil {
-		s.Log.Error("publish job", "err", err, "job_id", jobID)
+		s.Log.ErrorContext(ctx, "publish job", "err", err, "job_id", jobID)
 		writeError(w, http.StatusBadGateway, "failed to enqueue job")
 		return
 	}
 
 	observability.JobsPublished.WithLabelValues(string(kind)).Inc()
 	observability.UploadBytes.Observe(float64(size))
-	s.Log.Info("job accepted", "job_id", jobID, "kind", kind, "bytes", size)
+	s.Log.InfoContext(ctx, "job accepted", "job_id", jobID, "kind", kind, "bytes", size)
 
-	writeJSON(w, http.StatusAccepted, map[string]any{
+	resp := map[string]any{
 		"job_id": jobID,
 		"kind":   kind,
 		"status": media.StatusPending,
-	})
+	}
+	// Surface the trace id so the client can deep-link this job to its trace in
+	// Jaeger. Only present when a real (sampled, exported) span is active.
+	if sc := trace.SpanContextFromContext(ctx); sc.IsValid() {
+		resp["trace_id"] = sc.TraceID().String()
+	}
+	writeJSON(w, http.StatusAccepted, resp)
 }
 
 // handleStatus returns the job, its artifacts and presigned download URLs.
@@ -180,7 +187,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		s.Log.Error("load job", "err", err, "job_id", id)
+		s.Log.ErrorContext(ctx, "load job", "err", err, "job_id", id)
 		writeError(w, http.StatusInternalServerError, "failed to load job")
 		return
 	}

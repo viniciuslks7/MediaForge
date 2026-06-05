@@ -1,6 +1,7 @@
 import amqp, { type Channel, type ChannelModel } from 'amqplib';
 import { context, propagation, trace, SpanKind } from '@opentelemetry/api';
 import type { JobEvent } from '../ws/hub.js';
+import { log } from '../log.js';
 
 const EXCHANGE_EVENTS = 'media.events';
 const tracer = trace.getTracer('mediaforge.realtime.consumer');
@@ -58,7 +59,7 @@ export class EventConsumer {
             this.onEvent(event);
           } catch (err) {
             span.recordException(err as Error);
-            console.error('failed to parse event', err);
+            log.error('failed to parse event', { err: String(err) });
           } finally {
             span.end();
           }
@@ -67,7 +68,7 @@ export class EventConsumer {
       { noAck: true },
     );
 
-    this.connection.on('close', () => console.warn('rabbitmq connection closed'));
+    this.connection.on('close', () => log.warn('rabbitmq connection closed'));
   }
 
   async close(): Promise<void> {

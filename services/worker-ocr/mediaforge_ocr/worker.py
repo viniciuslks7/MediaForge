@@ -13,11 +13,15 @@ from .config import Config
 from .db import Database
 from .metrics import JOB_DURATION, JOBS_PROCESSED, WORDS_EXTRACTED, serve
 from .storage import ObjectStore
-from .tracing import init_tracing
+from .tracing import init_tracing, install_log_correlation
 
+install_log_correlation()
 logging.basicConfig(
     level=logging.INFO,
-    format='{"level":"%(levelname)s","logger":"%(name)s","msg":"%(message)s"}',
+    format=(
+        '{"level":"%(levelname)s","logger":"%(name)s",'
+        '"trace_id":"%(trace_id)s","span_id":"%(span_id)s","msg":"%(message)s"}'
+    ),
 )
 log = logging.getLogger("mediaforge.ocr")
 

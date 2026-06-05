@@ -10,12 +10,16 @@ import type { Artifact, JobEvent, Status } from './types';
 const RANK: Record<Stage, number> = { idle: 0, pending: 1, processing: 2, completed: 3, failed: 3 };
 const advance = (a: Stage, b: Status): Stage => (RANK[b] >= RANK[a] ? b : a);
 
+// Base URL of the Jaeger UI, used to deep-link a job to its distributed trace.
+const JAEGER_URL = (import.meta.env.VITE_JAEGER_URL as string | undefined) ?? 'http://localhost:16686';
+
 export default function App() {
   const [connected, setConnected] = useState(false);
   const [status, setStatus] = useState<Stage>('idle');
   const [events, setEvents] = useState<JobEvent[]>([]);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [jobId, setJobId] = useState<string | null>(null);
+  const [traceId, setTraceId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -72,15 +76,17 @@ export default function App() {
       setError(null);
       setEvents([]);
       setArtifacts([]);
+      setTraceId(null);
       setStatus('pending');
       try {
-        const { job_id } = await submitMedia(req.file, {
+        const { job_id, trace_id } = await submitMedia(req.file, {
           kind: req.kind,
           operations: req.operations,
           params: req.params,
         });
         currentJob.current = job_id;
         setJobId(job_id);
+        setTraceId(trace_id ?? null);
         rt.current?.subscribe(job_id);
         poll(job_id);
       } catch (e) {
@@ -117,6 +123,17 @@ export default function App() {
             ? `✓ forged ${artifacts.length} artifact${artifacts.length === 1 ? '' : 's'}`
             : '✕ job failed — see the event stream'}
           {jobId && <span className="jid">job {jobId.slice(0, 8)}</span>}
+          {traceId && (
+            <a
+              className="trace-link"
+              href={`${JAEGER_URL}/trace/${traceId}`}
+              target="_blank"
+              rel="noreferrer"
+              title={`Open trace ${traceId} in Jaeger`}
+            >
+              trace ↗
+            </a>
+          )}
         </div>
       )}
 
@@ -141,6 +158,9 @@ export default function App() {
           </a>
           <a href="http://localhost:9090" target="_blank" rel="noreferrer">
             Prometheus ↗
+          </a>
+          <a href={JAEGER_URL} target="_blank" rel="noreferrer">
+            Jaeger ↗
           </a>
         </div>
       </footer>

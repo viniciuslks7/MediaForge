@@ -192,3 +192,13 @@ trace backend (Tempo, an APM SaaS, …) is a one-line change in
 also wired as a Grafana datasource. Tracing is gated by `OTEL_TRACES_ENABLED`
 and sampled by `OTEL_TRACES_SAMPLE_RATIO`; even when export is off the propagator
 stays installed so context keeps flowing.
+
+### Log ↔ trace correlation
+
+Every log line emitted while a span is active carries `trace_id` and `span_id`,
+so a log and the trace it belongs to are cross-navigable — the third
+observability pillar joined to the other two. The Go services wrap their `slog`
+handler to read the span from the request/job context (logs use the `*Context`
+methods); the Python worker installs a log-record factory; the Node gateway
+reads the active span. From a failing log you can jump straight to the trace that
+produced it, and vice-versa.

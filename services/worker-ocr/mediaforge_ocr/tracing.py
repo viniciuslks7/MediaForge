@@ -21,6 +21,29 @@ from .config import Config
 log = logging.getLogger("mediaforge.ocr.tracing")
 
 
+def install_log_correlation() -> None:
+    """Tag every log record with trace_id/span_id from the active span.
+
+    Uses a log-record factory so the fields always exist (empty when there is no
+    active span), making logs and traces cross-navigable without risking a
+    KeyError in the format string. Safe to call when tracing export is disabled.
+    """
+    old_factory = logging.getLogRecordFactory()
+
+    def factory(*args, **kwargs):  # noqa: ANN002, ANN003
+        record = old_factory(*args, **kwargs)
+        sc = trace.get_current_span().get_span_context()
+        if sc.is_valid:
+            record.trace_id = format(sc.trace_id, "032x")
+            record.span_id = format(sc.span_id, "016x")
+        else:
+            record.trace_id = ""
+            record.span_id = ""
+        return record
+
+    logging.setLogRecordFactory(factory)
+
+
 def init_tracing(cfg: Config) -> TracerProvider | None:
     """Install a global tracer provider exporting over OTLP/HTTP.
 

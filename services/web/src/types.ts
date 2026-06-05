@@ -49,6 +49,7 @@ export interface SubmitResponse {
   job_id: string;
   kind: Kind;
   status: 'pending';
+  trace_id?: string;
 }
 
 // Lifecycle event fanned out by realtime-gateway over the WebSocket.

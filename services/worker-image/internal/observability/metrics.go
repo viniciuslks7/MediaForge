@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.opentelemetry.io/otel/trace"
 )
 
 var (
@@ -30,8 +31,33 @@ var (
 	}, []string{"variant"})
 )
 
+// Logger returns a JSON structured logger. It is wrapped so any log emitted with
+// a context carrying an active span is tagged with trace_id and span_id, making
+// logs and traces cross-navigable. Use the *Context log methods to propagate it.
 func Logger() *slog.Logger {
-	return slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	base := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})
+	return slog.New(traceHandler{base})
+}
+
+// traceHandler decorates each record with the trace/span IDs from the context.
+type traceHandler struct{ slog.Handler }
+
+func (h traceHandler) Handle(ctx context.Context, r slog.Record) error {
+	if sc := trace.SpanContextFromContext(ctx); sc.IsValid() {
+		r.AddAttrs(
+			slog.String("trace_id", sc.TraceID().String()),
+			slog.String("span_id", sc.SpanID().String()),
+		)
+	}
+	return h.Handler.Handle(ctx, r)
+}
+
+func (h traceHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return traceHandler{h.Handler.WithAttrs(attrs)}
+}
+
+func (h traceHandler) WithGroup(name string) slog.Handler {
+	return traceHandler{h.Handler.WithGroup(name)}
 }
 
 // ServeMetrics starts a metrics+health server and shuts it down on ctx cancel.
