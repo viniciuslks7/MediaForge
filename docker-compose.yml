@@ -121,6 +121,17 @@ services:
     depends_on:
       rabbitmq: { condition: service_healthy }
 
+  # Single-origin frontend: serves the SPA and reverse-proxies /v1, /ws and /s3
+  # so the browser talks to one origin (no CORS). See services/web/nginx.conf.
+  web:
+    build: ./services/web
+    <<: *restart
+    ports: ["3001:80"]
+    depends_on:
+      - api-gateway
+      - realtime-gateway
+      - minio
+
   # ────────────────────────── Observability ──────────────────────────
   prometheus:
     image: prom/prometheus:latest
