@@ -10,12 +10,14 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/google/uuid"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	"github.com/viniciusoliveira/mediaforge/api-gateway/internal/broker"
 	"github.com/viniciusoliveira/mediaforge/api-gateway/internal/media"
@@ -67,7 +69,16 @@ func (s *Server) Router() http.Handler {
 		r.With(bearerAuth(s.AuthToken)).Post("/", s.handleSubmit)
 		r.Get("/{id}", s.handleStatus)
 	})
-	return r
+
+	// otelhttp wraps the whole router: it extracts inbound W3C trace context and
+	// opens a server span per request. The name formatter runs before chi has
+	// matched a route, so we name spans by method only — keeping URLs with job
+	// IDs out of the span name avoids high-cardinality trace data.
+	return otelhttp.NewHandler(r, "http.server",
+		otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
+			return r.Method
+		}),
+	)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
@@ -109,6 +120,7 @@ func (s *Server) handleSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ops := parseOperations(r.FormValue("operations"))
+	params := parseParams(r)
 	jobID := uuid.NewString()
 	contentType := detectContentType(header.Header.Get("Content-Type"), header.Filename)
 	sourceKey := fmt.Sprintf("uploads/%s/%s", jobID, sanitize(header.Filename))
@@ -128,6 +140,7 @@ func (s *Server) handleSubmit(w http.ResponseWriter, r *http.Request) {
 		SourceMIME: contentType,
 		SizeBytes:  size,
 		Operations: ops,
+		Params:     params,
 	}
 	if err := s.Jobs.CreateJob(ctx, job); err != nil {
 		s.Log.Error("persist job", "err", err, "job_id", jobID)
@@ -214,6 +227,50 @@ func resolveKind(explicit, filename string) media.Kind {
 	default:
 		return media.KindImage
 	}
+}
+
+// parseParams reads the optional per-job image overrides from the multipart
+// form. It returns nil when the client sent none, so the common path keeps the
+// job payload (and the worker behaviour) unchanged. Out-of-range or unknown
+// values are dropped rather than rejected — the worker clamps to its defaults.
+func parseParams(r *http.Request) *media.JobParams {
+	p := &media.JobParams{}
+	set := false
+
+	if n, ok := formInt(r, "resize_max_dim"); ok && n >= 16 && n <= 8000 {
+		p.ResizeMaxDim = n
+		set = true
+	}
+	if n, ok := formInt(r, "thumbnail_size"); ok && n >= 16 && n <= 2000 {
+		p.ThumbnailSize = n
+		set = true
+	}
+	switch strings.ToLower(strings.TrimSpace(r.FormValue("resize_format"))) {
+	case "jpeg", "png", "webp":
+		p.ResizeFormat = strings.ToLower(strings.TrimSpace(r.FormValue("resize_format")))
+		set = true
+	}
+	if n, ok := formInt(r, "quality"); ok && n >= 1 && n <= 100 {
+		p.Quality = n
+		set = true
+	}
+
+	if !set {
+		return nil
+	}
+	return p
+}
+
+func formInt(r *http.Request, key string) (int, bool) {
+	v := strings.TrimSpace(r.FormValue(key))
+	if v == "" {
+		return 0, false
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return 0, false
+	}
+	return n, true
 }
 
 func parseOperations(raw string) []media.Operation {

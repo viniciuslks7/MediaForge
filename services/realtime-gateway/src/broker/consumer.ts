@@ -1,7 +1,9 @@
 import amqp, { type Channel, type ChannelModel } from 'amqplib';
+import { context, propagation, trace, SpanKind } from '@opentelemetry/api';
 import type { JobEvent } from '../ws/hub.js';
 
 const EXCHANGE_EVENTS = 'media.events';
+const tracer = trace.getTracer('mediaforge.realtime.consumer');
 
 export type EventHandler = (event: JobEvent) => void;
 
@@ -32,12 +34,35 @@ export class EventConsumer {
       queue,
       (msg) => {
         if (!msg) return;
-        try {
-          const event = JSON.parse(msg.content.toString()) as JobEvent;
-          this.onEvent(event);
-        } catch (err) {
-          console.error('failed to parse event', err);
-        }
+        // Continue the distributed trace: extract the W3C context the worker
+        // injected into the event headers, then open a consumer span for the
+        // WebSocket fan-out — the terminal hop of the trace.
+        const headers = (msg.properties.headers ?? {}) as Record<string, unknown>;
+        const parentCtx = propagation.extract(context.active(), headers);
+        const span = tracer.startSpan(
+          'consume media.events',
+          {
+            kind: SpanKind.CONSUMER,
+            attributes: {
+              'messaging.system': 'rabbitmq',
+              'messaging.rabbitmq.destination.routing_key': msg.fields.routingKey,
+            },
+          },
+          parentCtx,
+        );
+        context.with(trace.setSpan(parentCtx, span), () => {
+          try {
+            const event = JSON.parse(msg.content.toString()) as JobEvent;
+            span.setAttribute('mediaforge.job.id', event.job_id ?? '');
+            span.setAttribute('mediaforge.event.status', event.status ?? '');
+            this.onEvent(event);
+          } catch (err) {
+            span.recordException(err as Error);
+            console.error('failed to parse event', err);
+          } finally {
+            span.end();
+          }
+        });
       },
       { noAck: true },
     );

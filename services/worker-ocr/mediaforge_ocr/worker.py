@@ -13,6 +13,7 @@ from .config import Config
 from .db import Database
 from .metrics import JOB_DURATION, JOBS_PROCESSED, WORDS_EXTRACTED, serve
 from .storage import ObjectStore
+from .tracing import init_tracing
 
 logging.basicConfig(
     level=logging.INFO,
@@ -103,6 +104,8 @@ class Worker:
 def main() -> int:
     cfg = Config.load()
 
+    tracer_provider = init_tracing(cfg)
+
     serve(cfg.metrics_port)
     log.info("metrics listening on :%d", cfg.metrics_port)
 
@@ -127,6 +130,8 @@ def main() -> int:
         pass
     finally:
         db.close()
+        if tracer_provider is not None:
+            tracer_provider.shutdown()
     log.info("drained, bye")
     return 0
 

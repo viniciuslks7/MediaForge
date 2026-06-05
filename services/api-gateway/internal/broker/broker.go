@@ -19,7 +19,12 @@ import (
 	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
+
+var tracer = otel.Tracer("github.com/viniciusoliveira/mediaforge/api-gateway/broker")
 
 const (
 	ExchangeJobs    = "media.jobs"
@@ -133,25 +138,68 @@ func (b *Broker) declareTopology(retryTTL time.Duration) error {
 }
 
 // PublishJSON publishes v to exchange/key as a persistent JSON message and waits
-// for the broker's publisher confirmation.
+// for the broker's publisher confirmation. It opens a producer span and injects
+// the W3C trace context into the message headers, so a worker consuming the
+// message continues the same distributed trace.
 func (b *Broker) PublishJSON(ctx context.Context, exchange, key string, v any) error {
 	body, err := json.Marshal(v)
 	if err != nil {
 		return fmt.Errorf("marshal message: %w", err)
 	}
+
+	ctx, span := tracer.Start(ctx, "publish "+exchange,
+		trace.WithSpanKind(trace.SpanKindProducer),
+		trace.WithAttributes(
+			attribute.String("messaging.system", "rabbitmq"),
+			attribute.String("messaging.destination.name", exchange),
+			attribute.String("messaging.rabbitmq.destination.routing_key", key),
+		),
+	)
+	defer span.End()
+
+	headers := amqp.Table{}
+	otel.GetTextMapPropagator().Inject(ctx, amqpHeaderCarrier(headers))
+
 	conf, err := b.ch.PublishWithDeferredConfirmWithContext(ctx, exchange, key, true, false, amqp.Publishing{
 		ContentType:  "application/json",
 		DeliveryMode: amqp.Persistent,
 		Timestamp:    time.Now(),
+		Headers:      headers,
 		Body:         body,
 	})
 	if err != nil {
+		span.RecordError(err)
 		return fmt.Errorf("publish to %s/%s: %w", exchange, key, err)
 	}
 	if ok := conf.Wait(); !ok {
-		return fmt.Errorf("publish to %s/%s not confirmed (nacked)", exchange, key)
+		err := fmt.Errorf("publish to %s/%s not confirmed (nacked)", exchange, key)
+		span.RecordError(err)
+		return err
 	}
 	return nil
+}
+
+// amqpHeaderCarrier adapts an amqp.Table to the OTel TextMapCarrier interface so
+// trace context can be injected into / extracted from message headers.
+type amqpHeaderCarrier amqp.Table
+
+func (c amqpHeaderCarrier) Get(key string) string {
+	if v, ok := c[key]; ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	return ""
+}
+
+func (c amqpHeaderCarrier) Set(key, value string) { c[key] = value }
+
+func (c amqpHeaderCarrier) Keys() []string {
+	keys := make([]string, 0, len(c))
+	for k := range c {
+		keys = append(keys, k)
+	}
+	return keys
 }
 
 func (b *Broker) Close() error {

@@ -4,6 +4,16 @@
 export type Kind = 'image' | 'ocr';
 export type Status = 'pending' | 'processing' | 'completed' | 'failed';
 export type Operation = 'resize' | 'thumbnail' | 'webp';
+export type ResizeFormat = 'jpeg' | 'png' | 'webp';
+
+// Optional per-job overrides for the image pipeline (the "params" object in
+// specs/schemas/job.schema.json). Absent fields fall back to worker defaults.
+export interface JobParams {
+  resize_max_dim?: number;
+  thumbnail_size?: number;
+  resize_format?: ResizeFormat;
+  quality?: number;
+}
 
 export interface Job {
   job_id: string;
@@ -13,6 +23,7 @@ export interface Job {
   source_mime?: string;
   size_bytes?: number;
   operations?: Operation[];
+  params?: JobParams;
   attempt?: number;
   created_at?: string;
   updated_at?: string;

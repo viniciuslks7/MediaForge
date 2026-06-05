@@ -40,6 +40,25 @@ func main() {
 	boot, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
+	shutdownTracing, err := observability.InitTracing(boot, observability.TracingConfig{
+		Enabled:        cfg.OTelEnabled,
+		Endpoint:       cfg.OTelEndpoint,
+		ServiceName:    cfg.ServiceName,
+		ServiceVersion: cfg.ServiceVersion,
+		SampleRatio:    cfg.OTelSampleRatio,
+	})
+	if err != nil {
+		log.Error("init tracing", "err", err)
+		os.Exit(1)
+	}
+	defer func() {
+		flushCtx, flushCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer flushCancel()
+		if err := shutdownTracing(flushCtx); err != nil {
+			log.Error("shutdown tracing", "err", err)
+		}
+	}()
+
 	db, err := store.New(boot, cfg.PostgresDSN)
 	if err != nil {
 		log.Error("connect postgres", "err", err)
@@ -120,7 +139,7 @@ func (h *handler) handle(ctx context.Context, job broker.Job, attempt int) (err 
 
 	_ = h.bus.PublishEvent(ctx, broker.Event{JobID: job.ID, Kind: job.Kind, Status: "processing", Progress: 40, Message: "transforming"})
 
-	results, err := h.proc.Process(src, job.Operations)
+	results, err := h.proc.Process(src, job.Operations, processorParams(job))
 	if err != nil {
 		return h.fail(ctx, job, attempt, fmt.Errorf("process: %w", err))
 	}
@@ -153,6 +172,20 @@ func (h *handler) fail(ctx context.Context, job broker.Job, attempt int, cause e
 	_ = h.db.SetStatus(ctx, job.ID, "failed", cause.Error())
 	_ = h.bus.PublishEvent(ctx, broker.Event{JobID: job.ID, Kind: job.Kind, Status: "failed", Message: cause.Error()})
 	return cause
+}
+
+// processorParams maps the job's optional wire params to the processor's params.
+// A nil job.Params yields the zero value, which means "use defaults".
+func processorParams(job broker.Job) processor.Params {
+	if job.Params == nil {
+		return processor.Params{}
+	}
+	return processor.Params{
+		ResizeMaxDim:  job.Params.ResizeMaxDim,
+		ThumbnailSize: job.Params.ThumbnailSize,
+		ResizeFormat:  job.Params.ResizeFormat,
+		Quality:       job.Params.Quality,
+	}
 }
 
 func artifactFilename(r processor.Result) string {

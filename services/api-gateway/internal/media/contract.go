@@ -50,6 +50,16 @@ const (
 	OpWebP      Operation = "webp"
 )
 
+// JobParams carries optional per-job overrides for the image pipeline. A nil
+// *JobParams (the common case) means "use the worker's configured defaults".
+// Mirrors the "params" object in specs/schemas/job.schema.json.
+type JobParams struct {
+	ResizeMaxDim  int    `json:"resize_max_dim,omitempty"`
+	ThumbnailSize int    `json:"thumbnail_size,omitempty"`
+	ResizeFormat  string `json:"resize_format,omitempty"` // jpeg | png | webp
+	Quality       int    `json:"quality,omitempty"`       // 1..100, lossy formats
+}
+
 // Job is the persisted record of a piece of work and the payload published to
 // the workers on media.jobs.
 type Job struct {
@@ -60,6 +70,7 @@ type Job struct {
 	SourceMIME string      `json:"source_mime"` // detected content type
 	SizeBytes  int64       `json:"size_bytes"`
 	Operations []Operation `json:"operations,omitempty"` // image jobs only
+	Params     *JobParams  `json:"params,omitempty"`     // optional per-job overrides
 	Attempt    int         `json:"attempt"`              // delivery attempt, set by the broker layer
 	CreatedAt  time.Time   `json:"created_at"`
 	UpdatedAt  time.Time   `json:"updated_at"`

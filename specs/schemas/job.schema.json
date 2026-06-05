@@ -32,6 +32,36 @@
       "uniqueItems": true,
       "description": "Image transformations to apply (image jobs only)."
     },
+    "params": {
+      "type": "object",
+      "description": "Optional per-job overrides for image operations. Absent fields fall back to the worker's configured defaults.",
+      "properties": {
+        "resize_max_dim": {
+          "type": "integer",
+          "minimum": 16,
+          "maximum": 8000,
+          "description": "Longest edge (px) of the 'resized' variant."
+        },
+        "thumbnail_size": {
+          "type": "integer",
+          "minimum": 16,
+          "maximum": 2000,
+          "description": "Longest edge (px) of the square thumbnail."
+        },
+        "resize_format": {
+          "type": "string",
+          "enum": ["jpeg", "png", "webp"],
+          "description": "Output format of the 'resized' variant (default jpeg)."
+        },
+        "quality": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "description": "Encoder quality for lossy formats (jpeg)."
+        }
+      },
+      "additionalProperties": false
+    },
     "attempt": { "type": "integer", "minimum": 0 },
     "created_at": { "type": "string" },
     "updated_at": { "type": "string" }

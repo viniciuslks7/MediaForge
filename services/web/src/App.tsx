@@ -77,6 +77,7 @@ export default function App() {
         const { job_id } = await submitMedia(req.file, {
           kind: req.kind,
           operations: req.operations,
+          params: req.params,
         });
         currentJob.current = job_id;
         setJobId(job_id);

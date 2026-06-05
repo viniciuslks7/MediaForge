@@ -1,4 +1,4 @@
-import type { JobView, Operation, SubmitResponse } from './types';
+import type { JobParams, JobView, Operation, SubmitResponse } from './types';
 
 // Same-origin: nginx (prod) / vite proxy (dev) forward these to the gateway.
 const BASE = '';
@@ -15,12 +15,20 @@ export function proxiedArtifactUrl(url?: string): string | undefined {
 
 export async function submitMedia(
   file: File,
-  opts: { kind?: 'image' | 'ocr'; operations?: Operation[] },
+  opts: { kind?: 'image' | 'ocr'; operations?: Operation[]; params?: JobParams },
 ): Promise<SubmitResponse> {
   const form = new FormData();
   form.append('file', file);
   if (opts.kind) form.append('kind', opts.kind);
   if (opts.operations?.length) form.append('operations', opts.operations.join(','));
+
+  // Optional per-job image params — the gateway reads these form fields and
+  // drops anything out of range, so it's safe to send only what the user set.
+  const p = opts.params;
+  if (p?.resize_max_dim) form.append('resize_max_dim', String(p.resize_max_dim));
+  if (p?.thumbnail_size) form.append('thumbnail_size', String(p.thumbnail_size));
+  if (p?.resize_format) form.append('resize_format', p.resize_format);
+  if (p?.quality) form.append('quality', String(p.quality));
 
   const res = await fetch(`${BASE}/v1/media`, {
     method: 'POST',

@@ -39,6 +39,25 @@ paths:
                 operations:
                   type: string
                   description: Comma-separated image operations, e.g. "resize,thumbnail,webp".
+                resize_max_dim:
+                  type: integer
+                  minimum: 16
+                  maximum: 8000
+                  description: Longest edge (px) of the resized variant. Defaults to the worker config.
+                thumbnail_size:
+                  type: integer
+                  minimum: 16
+                  maximum: 2000
+                  description: Longest edge (px) of the thumbnail. Defaults to the worker config.
+                resize_format:
+                  type: string
+                  enum: [jpeg, png, webp]
+                  description: Output format of the resized variant (default jpeg).
+                quality:
+                  type: integer
+                  minimum: 1
+                  maximum: 100
+                  description: Encoder quality for lossy formats (jpeg).
               required: [file]
       responses:
         '202':

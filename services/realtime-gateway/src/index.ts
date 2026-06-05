@@ -3,9 +3,11 @@ import { EventConsumer } from './broker/consumer.js';
 import { buildServer } from './server.js';
 import { Hub } from './ws/hub.js';
 import { eventsReceived, trackedJobs } from './metrics/metrics.js';
+import { initTracing } from './tracing.js';
 
 async function main(): Promise<void> {
   const cfg = loadConfig();
+  const tracerProvider = initTracing(cfg);
   const hub = new Hub();
 
   const consumer = new EventConsumer(cfg.rabbitUrl, (event) => {
@@ -26,6 +28,7 @@ async function main(): Promise<void> {
     console.log(JSON.stringify({ level: 'INFO', msg: `received ${signal}, shutting down` }));
     server.close();
     await consumer.close();
+    await tracerProvider?.shutdown().catch(() => undefined);
     process.exit(0);
   };
   process.on('SIGTERM', () => void shutdown('SIGTERM'));

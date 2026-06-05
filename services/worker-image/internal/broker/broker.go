@@ -10,7 +10,12 @@ import (
 	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
+
+var tracer = otel.Tracer("github.com/viniciusoliveira/mediaforge/worker-image/broker")
 
 const (
 	ExchangeJobs    = "media.jobs"
@@ -27,13 +32,23 @@ const (
 // Job is the wire contract published by the gateway on media.jobs. It mirrors
 // api-gateway/internal/media.Job — keep the JSON tags in sync.
 type Job struct {
-	ID         string   `json:"job_id"`
-	Kind       string   `json:"kind"`
-	Status     string   `json:"status"`
-	SourceKey  string   `json:"source_key"`
-	SourceMIME string   `json:"source_mime"`
-	SizeBytes  int64    `json:"size_bytes"`
-	Operations []string `json:"operations"`
+	ID         string     `json:"job_id"`
+	Kind       string     `json:"kind"`
+	Status     string     `json:"status"`
+	SourceKey  string     `json:"source_key"`
+	SourceMIME string     `json:"source_mime"`
+	SizeBytes  int64      `json:"size_bytes"`
+	Operations []string   `json:"operations"`
+	Params     *JobParams `json:"params,omitempty"`
+}
+
+// JobParams mirrors the gateway's media.JobParams (the "params" object in the
+// job schema): optional per-job overrides for the image pipeline.
+type JobParams struct {
+	ResizeMaxDim  int    `json:"resize_max_dim,omitempty"`
+	ThumbnailSize int    `json:"thumbnail_size,omitempty"`
+	ResizeFormat  string `json:"resize_format,omitempty"`
+	Quality       int    `json:"quality,omitempty"`
 }
 
 // Event is emitted on media.events as a job changes state.
@@ -136,15 +151,32 @@ func (b *Broker) Consume(ctx context.Context, queue string, h Handler) error {
 func (b *Broker) handle(ctx context.Context, d amqp.Delivery, h Handler) {
 	attempt := deathCount(d.Headers) + 1
 
+	// Continue the distributed trace the gateway started: extract the W3C context
+	// the publisher injected into the message headers, then open a consumer span
+	// linked to that parent.
+	parentCtx := otel.GetTextMapPropagator().Extract(ctx, amqpHeaderCarrier(d.Headers))
+	ctx, span := tracer.Start(parentCtx, "consume "+d.RoutingKey,
+		trace.WithSpanKind(trace.SpanKindConsumer),
+		trace.WithAttributes(
+			attribute.String("messaging.system", "rabbitmq"),
+			attribute.String("messaging.rabbitmq.destination.routing_key", d.RoutingKey),
+			attribute.Int("messaging.rabbitmq.delivery.attempt", attempt),
+		),
+	)
+	defer span.End()
+
 	var job Job
 	if err := json.Unmarshal(d.Body, &job); err != nil {
 		// Unparseable: send straight to the parking lot, it will never succeed.
+		span.RecordError(err)
 		_ = b.park(ctx, d, "unmarshal: "+err.Error())
 		_ = d.Ack(false)
 		return
 	}
+	span.SetAttributes(attribute.String("mediaforge.job.id", job.ID))
 
 	if err := h(ctx, job, attempt); err != nil {
+		span.RecordError(err)
 		if attempt >= b.maxRetries {
 			_ = b.park(ctx, d, err.Error())
 			_ = d.Ack(false) // terminal — remove from work queue
@@ -166,15 +198,55 @@ func (b *Broker) park(ctx context.Context, d amqp.Delivery, reason string) error
 	})
 }
 
-// PublishEvent emits a lifecycle event on media.events keyed by job kind.
+// PublishEvent emits a lifecycle event on media.events keyed by job kind. The
+// current trace context is injected into the headers so the realtime-gateway's
+// fan-out joins the same trace.
 func (b *Broker) PublishEvent(ctx context.Context, e Event) error {
 	e.Timestamp = time.Now().UnixMilli()
 	body, _ := json.Marshal(e)
+
+	ctx, span := tracer.Start(ctx, "publish "+ExchangeEvents,
+		trace.WithSpanKind(trace.SpanKindProducer),
+		trace.WithAttributes(
+			attribute.String("messaging.system", "rabbitmq"),
+			attribute.String("messaging.destination.name", ExchangeEvents),
+			attribute.String("mediaforge.event.status", e.Status),
+		),
+	)
+	defer span.End()
+
+	headers := amqp.Table{}
+	otel.GetTextMapPropagator().Inject(ctx, amqpHeaderCarrier(headers))
+
 	return b.ch.PublishWithContext(ctx, ExchangeEvents, "event."+e.Kind, false, false, amqp.Publishing{
 		ContentType:  "application/json",
 		DeliveryMode: amqp.Transient,
+		Headers:      headers,
 		Body:         body,
 	})
+}
+
+// amqpHeaderCarrier adapts an amqp.Table to the OTel TextMapCarrier interface so
+// trace context can be injected into / extracted from message headers.
+type amqpHeaderCarrier amqp.Table
+
+func (c amqpHeaderCarrier) Get(key string) string {
+	if v, ok := c[key]; ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	return ""
+}
+
+func (c amqpHeaderCarrier) Set(key, value string) { c[key] = value }
+
+func (c amqpHeaderCarrier) Keys() []string {
+	keys := make([]string, 0, len(c))
+	for k := range c {
+		keys = append(keys, k)
+	}
+	return keys
 }
 
 func (b *Broker) Close() error {

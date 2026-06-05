@@ -26,6 +26,12 @@ type Config struct {
 	S3Bucket    string
 	S3UseSSL    bool
 	S3Region    string
+
+	OTelEnabled     bool
+	OTelEndpoint    string
+	OTelSampleRatio float64
+	ServiceName     string
+	ServiceVersion  string
 }
 
 // Load reads configuration from the process environment.
@@ -44,6 +50,12 @@ func Load() (*Config, error) {
 		S3Bucket:       env("S3_BUCKET", "mediaforge"),
 		S3UseSSL:       envBool("S3_USE_SSL", false),
 		S3Region:       env("S3_REGION", "us-east-1"),
+
+		OTelEnabled:     envBool("OTEL_TRACES_ENABLED", false),
+		OTelEndpoint:    env("OTEL_EXPORTER_OTLP_ENDPOINT", "otel-collector:4317"),
+		OTelSampleRatio: envFloat("OTEL_TRACES_SAMPLE_RATIO", 1.0),
+		ServiceName:     env("OTEL_SERVICE_NAME", "api-gateway"),
+		ServiceVersion:  env("SERVICE_VERSION", "dev"),
 	}
 
 	var missing []string
@@ -83,6 +95,15 @@ func envBool(key string, def bool) bool {
 	if v, ok := os.LookupEnv(key); ok {
 		if b, err := strconv.ParseBool(v); err == nil {
 			return b
+		}
+	}
+	return def
+}
+
+func envFloat(key string, def float64) float64 {
+	if v, ok := os.LookupEnv(key); ok {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			return f
 		}
 	}
 	return def

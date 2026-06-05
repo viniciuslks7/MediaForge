@@ -74,6 +74,28 @@ func TestEventConformsToContract(t *testing.T) {
 	}
 }
 
+func TestJobWithParamsConformsToContract(t *testing.T) {
+	sch := compile(t, "job.schema.json")
+
+	// A job carrying optional per-job image params must still satisfy the
+	// contract — proving the params extension is additive.
+	job := Job{
+		ID:         "9c1f0c4a-2b3d-4e5f-8a9b-0c1d2e3f4a5b",
+		Kind:       KindImage,
+		Status:     StatusPending,
+		SourceKey:  "uploads/9c1f/sample.png",
+		SourceMIME: "image/png",
+		SizeBytes:  12345,
+		Operations: []Operation{OpResize, OpThumbnail},
+		Params:     &JobParams{ResizeMaxDim: 800, ThumbnailSize: 128, ResizeFormat: "webp", Quality: 90},
+		CreatedAt:  time.Now(),
+		UpdatedAt:  time.Now(),
+	}
+	if err := sch.Validate(asInstance(t, job)); err != nil {
+		t.Fatalf("job with params violates contract: %v", err)
+	}
+}
+
 func TestInvalidJobRejectedByContract(t *testing.T) {
 	sch := compile(t, "job.schema.json")
 

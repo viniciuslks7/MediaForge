@@ -13,10 +13,14 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 import pika
+from opentelemetry import trace
+from opentelemetry.propagate import extract, inject
+from opentelemetry.trace import SpanKind
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.spec import Basic, BasicProperties
 
 log = logging.getLogger("mediaforge.ocr.broker")
+tracer = trace.get_tracer("mediaforge.ocr.broker")
 
 EXCHANGE_JOBS = "media.jobs"
 EXCHANGE_EVENTS = "media.events"
@@ -94,22 +98,39 @@ class Broker:
             body: bytes,
         ) -> None:
             attempt = _death_count(props.headers) + 1
-            try:
-                job = Job.from_bytes(body)
-            except (ValueError, KeyError) as exc:
-                self._park(method.routing_key, body, f"unmarshal: {exc}")
-                ch.basic_ack(method.delivery_tag)
-                return
 
-            try:
-                handler(job, attempt)
-                ch.basic_ack(method.delivery_tag)
-            except Exception as exc:  # noqa: BLE001 — broker decides retry vs park
-                if attempt >= self._max_retries:
-                    self._park(method.routing_key, body, str(exc))
+            # Continue the distributed trace: extract the W3C context the gateway
+            # injected into the message headers and open a consumer span.
+            ctx = extract(props.headers or {})
+            with tracer.start_as_current_span(
+                f"consume {method.routing_key}",
+                context=ctx,
+                kind=SpanKind.CONSUMER,
+                attributes={
+                    "messaging.system": "rabbitmq",
+                    "messaging.rabbitmq.destination.routing_key": method.routing_key or "",
+                    "messaging.rabbitmq.delivery.attempt": attempt,
+                },
+            ) as span:
+                try:
+                    job = Job.from_bytes(body)
+                except (ValueError, KeyError) as exc:
+                    span.record_exception(exc)
+                    self._park(method.routing_key, body, f"unmarshal: {exc}")
                     ch.basic_ack(method.delivery_tag)
-                else:
-                    ch.basic_nack(method.delivery_tag, requeue=False)
+                    return
+
+                span.set_attribute("mediaforge.job.id", job.job_id)
+                try:
+                    handler(job, attempt)
+                    ch.basic_ack(method.delivery_tag)
+                except Exception as exc:  # noqa: BLE001 — broker decides retry vs park
+                    span.record_exception(exc)
+                    if attempt >= self._max_retries:
+                        self._park(method.routing_key, body, str(exc))
+                        ch.basic_ack(method.delivery_tag)
+                    else:
+                        ch.basic_nack(method.delivery_tag, requeue=False)
 
         self._ch.basic_consume(queue, _on_message, auto_ack=False)
         self._ch.start_consuming()
@@ -128,11 +149,17 @@ class Broker:
         log.warning("parked message: %s", reason)
 
     def publish_event(self, event: dict) -> None:
+        # Inject the current trace context so the realtime-gateway's fan-out
+        # joins the same trace.
+        headers: dict = {}
+        inject(headers)
         self._ch.basic_publish(
             EXCHANGE_EVENTS,
             f"event.{event.get('kind', 'ocr')}",
             json.dumps(event),
-            properties=BasicProperties(content_type="application/json", delivery_mode=1),
+            properties=BasicProperties(
+                content_type="application/json", delivery_mode=1, headers=headers
+            ),
         )
 
     def close(self) -> None:

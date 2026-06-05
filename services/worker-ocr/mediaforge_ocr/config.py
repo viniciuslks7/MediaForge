@@ -25,6 +25,12 @@ class Config:
     languages: str
     tesseract_cmd: str
 
+    otel_enabled: bool
+    otel_endpoint: str
+    otel_sample_ratio: float
+    service_name: str
+    service_version: str
+
     @staticmethod
     def load() -> Config:
         cfg = Config(
@@ -41,6 +47,11 @@ class Config:
             metrics_port=int(os.getenv("OCR_METRICS_PORT", "9103")),
             languages=os.getenv("OCR_LANGUAGES", "eng"),
             tesseract_cmd=os.getenv("OCR_TESSERACT_CMD", "tesseract"),
+            otel_enabled=os.getenv("OTEL_TRACES_ENABLED", "false").lower() == "true",
+            otel_endpoint=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel-collector:4318"),
+            otel_sample_ratio=float(os.getenv("OTEL_TRACES_SAMPLE_RATIO", "1.0")),
+            service_name=os.getenv("OTEL_SERVICE_NAME", "worker-ocr"),
+            service_version=os.getenv("SERVICE_VERSION", "dev"),
         )
         return cfg
 
