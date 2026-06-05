@@ -1,0 +1,31 @@
+# OpenTelemetry Collector — single ingestion point for all service traces.
+# Go services push OTLP/gRPC (:4317); Python and Node push OTLP/HTTP (:4318).
+# The collector batches spans and forwards them to Jaeger over OTLP. Swapping
+# the trace backend (Tempo, an APM SaaS, …) is a one-line change here — the
+# instrumented services never need to know.
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 5s
+
+exporters:
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+  debug:
+    verbosity: basic
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/jaeger, debug]

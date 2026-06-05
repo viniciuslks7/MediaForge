@@ -15,6 +15,16 @@ config:
   S3_REGION: "us-east-1"
   OCR_LANGUAGES: "eng+por"
   OCR_TESSERACT_CMD: "tesseract"
+  # Distributed tracing (shared). Per-service endpoint/name set under services.*.
+  OTEL_TRACES_ENABLED: "true"
+  OTEL_TRACES_SAMPLE_RATIO: "1.0"
+  SERVICE_VERSION: "dev"
+
+# Tracing backend (OTel Collector → Jaeger). Toggle the whole backend here.
+tracing:
+  enabled: true
+  collectorImage: otel/opentelemetry-collector-contrib:latest
+  jaegerImage: jaegertracing/all-in-one:latest
 
 # Secrets. Override with --set-string or a SealedSecret in real deployments.
 secret:
@@ -31,6 +41,7 @@ services:
     image: mediaforge-api-gateway
     replicas: 2
     port: 8080
+    otelEndpoint: "otel-collector:4317"          # Go → OTLP/gRPC
     httpProbe: true
     probePath: /healthz
     expose: true
@@ -47,6 +58,7 @@ services:
     image: mediaforge-worker-image
     replicas: 2
     port: 9102
+    otelEndpoint: "otel-collector:4317"          # Go → OTLP/gRPC
     httpProbe: true
     probePath: /healthz
     expose: false
@@ -63,6 +75,7 @@ services:
     image: mediaforge-worker-ocr
     replicas: 2
     port: 9103
+    otelEndpoint: "http://otel-collector:4318"   # Python → OTLP/HTTP
     httpProbe: false
     expose: false
     autoscaling:
@@ -78,6 +91,7 @@ services:
     image: mediaforge-realtime-gateway
     replicas: 2
     port: 8090
+    otelEndpoint: "http://otel-collector:4318"   # Node → OTLP/HTTP
     httpProbe: true
     probePath: /healthz
     expose: true

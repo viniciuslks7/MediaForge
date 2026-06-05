@@ -84,17 +84,24 @@ services:
     build: ./services/api-gateway
     <<: *restart
     env_file: .env
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4317   # Go → OTLP/gRPC
+      OTEL_SERVICE_NAME: api-gateway
     ports: ["8080:8080"]
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
       minio: { condition: service_healthy }
+      otel-collector: { condition: service_started }
 
   worker-image:
     build: ./services/worker-image
     <<: *restart
     env_file: .env
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4317   # Go → OTLP/gRPC
+      OTEL_SERVICE_NAME: worker-image
     ports: ["9102:9102"]
     deploy:
       replicas: 2
@@ -102,24 +109,33 @@ services:
       rabbitmq: { condition: service_healthy }
       minio: { condition: service_healthy }
       postgres: { condition: service_healthy }
+      otel-collector: { condition: service_started }
 
   worker-ocr:
     build: ./services/worker-ocr
     <<: *restart
     env_file: .env
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318   # Python → OTLP/HTTP
+      OTEL_SERVICE_NAME: worker-ocr
     ports: ["9103:9103"]
     depends_on:
       rabbitmq: { condition: service_healthy }
       minio: { condition: service_healthy }
       postgres: { condition: service_healthy }
+      otel-collector: { condition: service_started }
 
   realtime-gateway:
     build: ./services/realtime-gateway
     <<: *restart
     env_file: .env
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318   # Node → OTLP/HTTP
+      OTEL_SERVICE_NAME: realtime-gateway
     ports: ["8090:8090"]
     depends_on:
       rabbitmq: { condition: service_healthy }
+      otel-collector: { condition: service_started }
 
   # Single-origin frontend: serves the SPA and reverse-proxies /v1, /ws and /s3
   # so the browser talks to one origin (no CORS). See services/web/nginx.conf.
@@ -133,6 +149,26 @@ services:
       - minio
 
   # ────────────────────────── Observability ──────────────────────────
+  # Distributed tracing: services → OTel Collector → Jaeger.
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    <<: *restart
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"  # Jaeger UI
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    <<: *restart
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./observability/otel-collector/config.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "4317:4317"  # OTLP gRPC
+      - "4318:4318"  # OTLP HTTP
+    depends_on: [jaeger]
+
   prometheus:
     image: prom/prometheus:latest
     <<: *restart
@@ -153,7 +189,7 @@ services:
     volumes:
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
-    depends_on: [prometheus]
+    depends_on: [prometheus, jaeger]
 
 volumes:
   pgdata:

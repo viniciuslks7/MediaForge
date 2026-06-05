@@ -24,6 +24,9 @@ spec:
           envFrom:
             - configMapRef: { name: mediaforge-config }
             - secretRef: { name: mediaforge-secret }
+          env:
+            - { name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://otel-collector:4318" }  # Python → OTLP/HTTP
+            - { name: OTEL_SERVICE_NAME, value: "worker-ocr" }
           resources:
             requests: { cpu: "250m", memory: "384Mi" }
             limits: { cpu: "1", memory: "768Mi" }

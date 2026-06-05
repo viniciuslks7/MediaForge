@@ -82,6 +82,7 @@ Then:
 | MinIO console | http://localhost:9001 |
 | Prometheus | http://localhost:9090 |
 | Grafana | http://localhost:3000 (admin/admin) |
+| Jaeger (traces) | http://localhost:16686 |
 
 ### Try it end-to-end
 

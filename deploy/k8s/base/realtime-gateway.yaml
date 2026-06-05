@@ -23,6 +23,9 @@ spec:
           envFrom:
             - configMapRef: { name: mediaforge-config }
             - secretRef: { name: mediaforge-secret }
+          env:
+            - { name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://otel-collector:4318" }  # Node → OTLP/HTTP
+            - { name: OTEL_SERVICE_NAME, value: "realtime-gateway" }
           readinessProbe:
             httpGet: { path: /readyz, port: http }
             initialDelaySeconds: 5

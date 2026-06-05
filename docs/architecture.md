@@ -164,3 +164,31 @@ Key series: `mediaforge_api_http_requests_total`,
 `mediaforge_*_worker_jobs_processed_total{outcome=...}`,
 `mediaforge_realtime_connected_clients`. A Grafana dashboard and Prometheus
 alert rules ship in `observability/`.
+
+### Distributed tracing
+
+Metrics tell you *that* something is slow; traces tell you *where*. Every
+service is instrumented with **OpenTelemetry** and a single trace follows a
+request across process and language boundaries:
+
+```
+HTTP POST /v1/media ─▶ api-gateway (Go) ─publish─▶ RabbitMQ ─▶ worker (Go/Py)
+                                                                    │ publish
+                                                                    ▼
+                                                  RabbitMQ ─▶ realtime-gateway (TS)
+```
+
+The trick across the message bus is **context propagation**: the gateway injects
+the W3C `traceparent` into the AMQP message headers on publish; each worker
+extracts it and starts its span as a child, so the broker hop doesn't break the
+trace. The worker re-injects context onto the `media.events` message, so the
+realtime-gateway's WebSocket fan-out is the trace's final span.
+
+Spans are exported via **OTLP** (Go services over gRPC `:4317`; Python and Node
+over HTTP `:4318`) to an **OpenTelemetry Collector**, which batches and forwards
+them to **Jaeger** (`:16686`). Routing through the collector means swapping the
+trace backend (Tempo, an APM SaaS, …) is a one-line change in
+`observability/otel-collector/config.yaml` — the services never change. Jaeger is
+also wired as a Grafana datasource. Tracing is gated by `OTEL_TRACES_ENABLED`
+and sampled by `OTEL_TRACES_SAMPLE_RATIO`; even when export is off the propagator
+stays installed so context keeps flowing.

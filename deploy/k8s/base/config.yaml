@@ -25,6 +25,12 @@ data:
   POSTGRES_HOST: "postgres"
   POSTGRES_PORT: "5432"
   POSTGRES_DB: "mediaforge"
+  # Distributed tracing (shared). Per-service OTEL_EXPORTER_OTLP_ENDPOINT and
+  # OTEL_SERVICE_NAME are set on each Deployment (Go uses gRPC :4317, Python/Node
+  # use HTTP :4318).
+  OTEL_TRACES_ENABLED: "true"
+  OTEL_TRACES_SAMPLE_RATIO: "1.0"
+  SERVICE_VERSION: "dev"
 ---
 # Demo secret. In production, generate this with a SealedSecret / External Secrets
 # operator — never commit real credentials.
