@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import type { Operation } from '../types';
+import { humanSize } from '../utils';
 
 export interface ForgeRequest {
   file: File;
@@ -8,12 +9,6 @@ export interface ForgeRequest {
 }
 
 const ALL_OPS: Operation[] = ['resize', 'thumbnail', 'webp'];
-
-function humanSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
-}
 
 export function Uploader({
   busy,

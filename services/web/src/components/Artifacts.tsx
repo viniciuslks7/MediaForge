@@ -2,27 +2,21 @@ import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import type { Artifact } from '../types';
 import { proxiedArtifactUrl } from '../api';
-
-function humanSize(bytes?: number): string {
-  if (!bytes && bytes !== 0) return '—';
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
-}
+import { humanSize } from '../utils';
 
 /** OCR artifacts are plain text — fetch and render them inline like a terminal. */
 function OcrText({ url }: { url?: string }) {
   const [text, setText] = useState('loading…');
   useEffect(() => {
     if (!url) return;
-    let alive = true;
-    fetch(url)
+    const ac = new AbortController();
+    fetch(url, { signal: ac.signal })
       .then((r) => r.text())
-      .then((t) => alive && setText(t.trim() || '(no text detected)'))
-      .catch(() => alive && setText('(failed to load text)'));
-    return () => {
-      alive = false;
-    };
+      .then((t) => setText(t.trim() || '(no text detected)'))
+      .catch((e) => {
+        if (e.name !== 'AbortError') setText('(failed to load text)');
+      });
+    return () => ac.abort();
   }, [url]);
   return <div className="ocr-text">{text}</div>;
 }

@@ -54,7 +54,10 @@ export default function App() {
           return;
         }
         if (attempt < 90) setTimeout(() => poll(id, attempt + 1), 1000);
-        else setBusy(false);
+        else {
+          setError('Job timed out after 90s — check the worker logs.');
+          setBusy(false);
+        }
       })
       .catch(() => {
         if (currentJob.current === id && attempt < 90) {
