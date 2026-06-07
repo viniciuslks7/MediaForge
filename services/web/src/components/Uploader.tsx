@@ -3,7 +3,7 @@ import type { JobParams, Operation, ResizeFormat } from '../types';
 import { humanSize } from '../utils';
 
 export interface ForgeRequest {
-  file: File;
+  files: File[];
   kind: 'image' | 'ocr';
   operations: Operation[];
   params?: JobParams;
@@ -12,14 +12,10 @@ export interface ForgeRequest {
 const ALL_OPS: Operation[] = ['resize', 'thumbnail', 'webp', 'grayscale'];
 const FORMATS: ResizeFormat[] = ['jpeg', 'png', 'webp'];
 
-export function Uploader({
-  busy,
-  onForge,
-}: {
-  busy: boolean;
-  onForge: (req: ForgeRequest) => void;
-}) {
-  const [file, setFile] = useState<File | null>(null);
+/** The ingest panel: collects one or more files plus the shared operations and
+ *  optional per-job params, then hands the whole batch to the queue in App. */
+export function Uploader({ onForge }: { onForge: (req: ForgeRequest) => void }) {
+  const [files, setFiles] = useState<File[]>([]);
   const [preview, setPreview] = useState<string | null>(null);
   const [kind, setKind] = useState<'image' | 'ocr'>('image');
   const [ops, setOps] = useState<Operation[]>(['resize', 'thumbnail', 'webp']);
@@ -42,32 +38,58 @@ export function Uploader({
     return Object.keys(p).length ? p : undefined;
   };
 
-  const accept = useCallback((f: File | undefined) => {
-    if (!f) return;
-    setFile(f);
+  // Append selected/dropped files; keep a preview of the first image only.
+  const accept = useCallback((list: FileList | null) => {
+    if (!list || list.length === 0) return;
+    const incoming = Array.from(list);
+    setFiles((prev) => [...prev, ...incoming]);
+    setPreview((prev) => {
+      if (prev) return prev;
+      const firstImg = incoming.find((f) => f.type.startsWith('image/'));
+      return firstImg ? URL.createObjectURL(firstImg) : null;
+    });
+  }, []);
+
+  const clear = useCallback(() => {
     setPreview((prev) => {
       if (prev) URL.revokeObjectURL(prev);
-      return f.type.startsWith('image/') ? URL.createObjectURL(f) : null;
+      return null;
     });
+    setFiles([]);
+    if (inputRef.current) inputRef.current.value = '';
   }, []);
 
   const toggleOp = (op: Operation) =>
     setOps((cur) => (cur.includes(op) ? cur.filter((o) => o !== op) : [...cur, op]));
 
+  const submit = () => {
+    if (files.length === 0) return;
+    onForge({
+      files,
+      kind,
+      operations: ops,
+      params: kind === 'image' ? buildParams() : undefined,
+    });
+    clear();
+  };
+
+  const totalBytes = files.reduce((a, f) => a + f.size, 0);
+  const disabled = files.length === 0 || (kind === 'image' && ops.length === 0);
+
   return (
     <div className="hero">
       <div className="eyebrow">Ingest</div>
       <p className="hero-lead">
-        Drop a file. Watch the <em>forge</em> work it.
+        Drop your media. Watch the <em>forge</em> work it.
       </p>
       <p className="hero-sub">
         MediaForge accepts your media at the gateway, fans it out over RabbitMQ to a
         fleet of workers, and streams every state change back here in real time — image
-        transforms in Go, OCR in Python.
+        transforms in Go, OCR in Python. Queue several at once.
       </p>
 
       <div
-        className={`dropzone${drag ? ' drag' : ''}${file ? ' has-file' : ''}`}
+        className={`dropzone${drag ? ' drag' : ''}${files.length ? ' has-file' : ''}`}
         role="button"
         tabIndex={0}
         onClick={() => inputRef.current?.click()}
@@ -80,21 +102,27 @@ export function Uploader({
         onDrop={(e) => {
           e.preventDefault();
           setDrag(false);
-          accept(e.dataTransfer.files[0]);
+          accept(e.dataTransfer.files);
         }}
       >
         <input
           ref={inputRef}
           type="file"
           accept="image/*,application/pdf"
+          multiple
           hidden
-          onChange={(e) => accept(e.target.files?.[0])}
+          onChange={(e) => {
+            accept(e.target.files);
+            e.target.value = '';
+          }}
         />
-        {!file ? (
+        {files.length === 0 ? (
           <>
-            <div className="dz-anvil" aria-hidden>⚒</div>
-            <div className="dz-title">Arraste sua mídia, ou clique para escolher</div>
-            <div className="dz-hint">PNG · JPG · WEBP · PDF — até 25&nbsp;MiB</div>
+            <div className="dz-anvil" aria-hidden>
+              ⚒
+            </div>
+            <div className="dz-title">Arraste suas mídias, ou clique para escolher</div>
+            <div className="dz-hint">PNG · JPG · WEBP · PDF — vários de uma vez, até 25&nbsp;MiB cada</div>
           </>
         ) : (
           <div className="dz-preview">
@@ -106,11 +134,22 @@ export function Uploader({
               </div>
             )}
             <div className="dz-meta">
-              <div className="n">{file.name}</div>
-              <div className="s">
-                {humanSize(file.size)} · {file.type || 'unknown'}
+              <div className="n">
+                {files.length === 1 ? files[0].name : `${files.length} arquivos selecionados`}
               </div>
+              <div className="s">{humanSize(totalBytes)} total</div>
             </div>
+            <button
+              type="button"
+              className="dz-clear"
+              onClick={(e) => {
+                e.stopPropagation();
+                clear();
+              }}
+              aria-label="Limpar seleção"
+            >
+              ×
+            </button>
           </div>
         )}
       </div>
@@ -218,20 +257,8 @@ export function Uploader({
           </div>
         )}
 
-        <button
-          className="forge-btn"
-          disabled={!file || busy || (kind === 'image' && ops.length === 0)}
-          onClick={() =>
-            file &&
-            onForge({
-              file,
-              kind,
-              operations: ops,
-              params: kind === 'image' ? buildParams() : undefined,
-            })
-          }
-        >
-          {busy ? 'Forging…' : 'Forge ▸'}
+        <button className="forge-btn" disabled={disabled} onClick={submit}>
+          {files.length > 1 ? `Forge ${files.length} ▸` : 'Forge ▸'}
         </button>
       </div>
     </div>

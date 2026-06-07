@@ -6,6 +6,8 @@ import { Artifacts } from './components/Artifacts';
 import { Compare } from './components/Compare';
 import { History } from './components/History';
 import { SystemPulse } from './components/SystemPulse';
+import { ForgeQueue, type QueueItem } from './components/ForgeQueue';
+import { ForgeStats } from './components/ForgeStats';
 import { getJob, submitMedia, proxiedArtifactUrl } from './api';
 import { RealtimeClient } from './ws';
 import { readHistory, pushHistory, type HistoryEntry } from './history';
@@ -26,6 +28,10 @@ const advance = (a: Stage, b: Status): Stage => (RANK[b] >= RANK[a] ? b : a);
 // Base URL of the Jaeger UI, used to deep-link a job to its distributed trace.
 const JAEGER_URL = (import.meta.env.VITE_JAEGER_URL as string | undefined) ?? 'http://localhost:16686';
 
+// Monotonic local id for queue items (distinct from the server's job_id).
+let seq = 0;
+const nextId = () => `q${Date.now().toString(36)}-${seq++}`;
+
 export default function App() {
   const [connected, setConnected] = useState(false);
   const [status, setStatus] = useState<Stage>('idle');
@@ -33,17 +39,20 @@ export default function App() {
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [jobId, setJobId] = useState<string | null>(null);
   const [traceId, setTraceId] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
   const [originalUrl, setOriginalUrl] = useState<string | null>(null);
+  const [originalBytes, setOriginalBytes] = useState<number | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>(() => readHistory());
+  const [queue, setQueue] = useState<QueueItem[]>([]);
 
   const rt = useRef<RealtimeClient | null>(null);
   const currentJob = useRef<string | null>(null);
   const originalUrlRef = useRef<string | null>(null);
+  const queueRef = useRef<QueueItem[]>([]);
+  const running = useRef(false);
 
-  // Single long-lived WebSocket; feeds the live event stream + advances the pipeline.
+  // Single long-lived WebSocket; feeds the live event stream and advances the
+  // pipeline for whichever job is currently in focus.
   useEffect(() => {
     const client = new RealtimeClient();
     rt.current = client;
@@ -61,97 +70,158 @@ export default function App() {
     };
   }, []);
 
-  // REST polling is the source of truth for final status + artifacts (events can
-  // arrive faster than we subscribe for very short jobs).
-  const poll = useCallback((id: string, attempt = 0) => {
-    getJob(id)
-      .then(({ job, artifacts: arts }) => {
-        if (currentJob.current !== id) return;
-        setStatus((s) => advance(s, job.status));
-        if (arts.length) setArtifacts(arts);
-        if (job.status === 'completed' || job.status === 'failed') {
-          setArtifacts(arts);
-          setBusy(false);
-          return;
-        }
-        if (attempt < 90) setTimeout(() => poll(id, attempt + 1), 1000);
-        else {
-          setError('Job timed out after 90s — check the worker logs.');
-          setBusy(false);
-        }
-      })
-      .catch(() => {
-        if (currentJob.current === id && attempt < 90) {
-          setTimeout(() => poll(id, attempt + 1), 1200);
-        }
-      });
+  // Mutate the queue through one helper so the ref (read by the async runner)
+  // and the rendered state never drift apart.
+  const setQ = useCallback((updater: (q: QueueItem[]) => QueueItem[]) => {
+    queueRef.current = updater(queueRef.current);
+    setQueue(queueRef.current);
   }, []);
 
-  const onForge = useCallback(
-    async (req: ForgeRequest) => {
-      setBusy(true);
+  const patchItem = useCallback(
+    (id: string, patch: Partial<QueueItem>) => {
+      setQ((q) => q.map((it) => (it.id === id ? { ...it, ...patch } : it)));
+    },
+    [setQ],
+  );
+
+  // Poll REST until the job reaches a terminal state, resolving with that
+  // status. It keeps polling regardless of focus (so a queue item still
+  // finishes if the user clicks away) but only drives the visible panel while
+  // the job is the focused one.
+  const pollUntilDone = useCallback((id: string): Promise<Status> => {
+    return new Promise((resolve) => {
+      const tick = (attempt = 0) => {
+        getJob(id)
+          .then(({ job, artifacts: arts }) => {
+            if (currentJob.current === id) {
+              setStatus((s) => advance(s, job.status));
+              if (arts.length) setArtifacts(arts);
+            }
+            if (job.status === 'completed' || job.status === 'failed') {
+              if (currentJob.current === id) setArtifacts(arts);
+              return resolve(job.status);
+            }
+            if (attempt < 90) setTimeout(() => tick(attempt + 1), 1000);
+            else resolve('failed');
+          })
+          .catch(() => {
+            if (attempt < 90) setTimeout(() => tick(attempt + 1), 1200);
+            else resolve('failed');
+          });
+      };
+      tick();
+    });
+  }, []);
+
+  // Process one queue item end-to-end. It becomes the focused job: the pipeline,
+  // event log, artifacts and before/after slider all reflect it.
+  const processItem = useCallback(
+    async (item: QueueItem) => {
+      patchItem(item.id, { status: 'active' });
       setError(null);
       setEvents([]);
       setArtifacts([]);
       setTraceId(null);
       setStatus('pending');
 
-      // Keep a local preview of the original to drive the before/after slider.
       if (originalUrlRef.current) URL.revokeObjectURL(originalUrlRef.current);
       const preview =
-        req.kind === 'image' && req.file.type.startsWith('image/')
-          ? URL.createObjectURL(req.file)
+        item.kind === 'image' && item.file.type.startsWith('image/')
+          ? URL.createObjectURL(item.file)
           : null;
       originalUrlRef.current = preview;
       setOriginalUrl(preview);
+      // Original size drives the "forge economy" bars; only meaningful for the
+      // image pipeline, where the artifacts are re-encodings of this upload.
+      setOriginalBytes(item.kind === 'image' ? item.file.size : null);
 
       try {
-        const { job_id, trace_id } = await submitMedia(req.file, {
-          kind: req.kind,
-          operations: req.operations,
-          params: req.params,
+        const { job_id, trace_id } = await submitMedia(item.file, {
+          kind: item.kind,
+          operations: item.operations,
+          params: item.params,
         });
         currentJob.current = job_id;
         setJobId(job_id);
         setTraceId(trace_id ?? null);
-        setHistory(pushHistory({ job_id, kind: req.kind, trace_id, ts: Date.now() }));
+        patchItem(item.id, { jobId: job_id });
+        setHistory(pushHistory({ job_id, kind: item.kind, trace_id, ts: Date.now() }));
         rt.current?.subscribe(job_id);
-        poll(job_id);
+        const final = await pollUntilDone(job_id);
+        patchItem(item.id, { status: final === 'completed' ? 'done' : 'error' });
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'submission failed');
-        setStatus('idle');
-        setBusy(false);
+        const msg = e instanceof Error ? e.message : 'submission failed';
+        setError(msg);
+        setStatus((s) => (s === 'pending' ? 'idle' : s));
+        patchItem(item.id, { status: 'error', error: msg });
       }
     },
-    [poll],
+    [patchItem, pollUntilDone],
   );
 
-  // Reload a previously submitted job from history: fetch its current state and
-  // artifacts. No original preview survives a reload, so the before/after slider
-  // is skipped for historical jobs.
-  const loadJob = useCallback((entry: HistoryEntry) => {
+  // Drain the queue one item at a time. Re-entrancy is guarded by `running`, so
+  // enqueuing more files while a batch is in flight just extends the run.
+  const runNext = useCallback(async () => {
+    if (running.current) return;
+    const next = queueRef.current.find((it) => it.status === 'queued');
+    if (!next) return;
+    running.current = true;
+    await processItem(next);
+    running.current = false;
+    if (queueRef.current.some((it) => it.status === 'queued')) void runNext();
+  }, [processItem]);
+
+  const enqueue = useCallback(
+    (req: ForgeRequest) => {
+      const items = req.files.map(
+        (file): QueueItem => ({
+          id: nextId(),
+          file,
+          fileName: file.name,
+          kind: req.kind,
+          operations: req.operations,
+          params: req.params,
+          status: 'queued',
+        }),
+      );
+      setQ((q) => [...q, ...items]);
+      void runNext();
+    },
+    [setQ, runNext],
+  );
+
+  const clearFinished = useCallback(() => {
+    setQ((q) => q.filter((it) => it.status === 'queued' || it.status === 'active'));
+  }, [setQ]);
+
+  // Reload a finished job (from history or a queue card) into the main panel.
+  // No original preview survives a reload, so the before/after slider is skipped.
+  const loadJob = useCallback((entry: { job_id: string; trace_id?: string }) => {
     currentJob.current = entry.job_id;
     setJobId(entry.job_id);
     setTraceId(entry.trace_id ?? null);
     if (originalUrlRef.current) URL.revokeObjectURL(originalUrlRef.current);
     originalUrlRef.current = null;
     setOriginalUrl(null);
+    setOriginalBytes(null);
     setError(null);
     setEvents([]);
     setArtifacts([]);
-    setBusy(true);
     setStatus('pending');
     getJob(entry.job_id)
       .then(({ job, artifacts: arts }) => {
         setStatus((s) => advance(s, job.status));
         setArtifacts(arts);
-        setBusy(false);
       })
-      .catch(() => {
-        setError('failed to load job from history');
-        setBusy(false);
-      });
+      .catch(() => setError('failed to load job from history'));
   }, []);
+
+  const onSelectQueue = useCallback(
+    (item: QueueItem) => {
+      if (item.jobId) loadJob({ job_id: item.jobId });
+    },
+    [loadJob],
+  );
 
   return (
     <div className="shell">
@@ -173,7 +243,9 @@ export default function App() {
 
       <History entries={history} activeId={jobId} onSelect={loadJob} />
 
-      <Uploader busy={busy} onForge={onForge} />
+      <Uploader onForge={enqueue} />
+
+      <ForgeQueue items={queue} activeId={jobId} onSelect={onSelectQueue} onClear={clearFinished} />
 
       <Pipeline status={status} />
 
@@ -205,6 +277,8 @@ export default function App() {
           const after = afterImage(artifacts);
           return after ? <Compare before={originalUrl} after={after} /> : null;
         })()}
+
+      {status === 'completed' && <ForgeStats artifacts={artifacts} originalBytes={originalBytes} />}
 
       <div className="grid2" style={{ marginTop: 30 }}>
         <EventLog events={events} />

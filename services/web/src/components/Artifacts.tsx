@@ -78,6 +78,17 @@ function ArtifactCard({ art }: { art: Artifact }) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, ease: 'easeOut' }}
     >
+      {url && (
+        <a
+          className="art-dl"
+          href={url}
+          download={art.name}
+          title={`Download ${art.name}`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          ↓
+        </a>
+      )}
       <a href={url} target="_blank" rel="noreferrer">
         {isImage ? (
           <img className="thumb" src={url} alt={art.name} loading="lazy" />
