@@ -28,7 +28,7 @@
     "size_bytes": { "type": "integer", "minimum": 0 },
     "operations": {
       "type": "array",
-      "items": { "type": "string", "enum": ["resize", "thumbnail", "webp"] },
+      "items": { "type": "string", "enum": ["resize", "thumbnail", "webp", "grayscale"] },
       "uniqueItems": true,
       "description": "Image transformations to apply (image jobs only)."
     },

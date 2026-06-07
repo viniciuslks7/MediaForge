@@ -107,3 +107,38 @@ func TestProcessHonorsParams(t *testing.T) {
 		t.Errorf("thumbnail width %d exceeds requested 64", w)
 	}
 }
+
+// TestProcessGrayscale proves the grayscale op desaturates the image (R==G==B at
+// every pixel, verified losslessly via PNG) while preserving its dimensions.
+func TestProcessGrayscale(t *testing.T) {
+	src := makePNG(t, 64, 48)
+	p := New(Options{})
+
+	results, err := p.Process(src, []string{"grayscale"}, Params{})
+	if err != nil {
+		t.Fatalf("process: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+
+	g := results[0]
+	if g.Name != "grayscale" || g.ContentType != "image/png" {
+		t.Fatalf("got name=%q content-type=%q", g.Name, g.ContentType)
+	}
+	// Grayscale preserves dimensions — it desaturates, it does not resample.
+	if w, h := g.Metadata["width"].(int), g.Metadata["height"].(int); w != 64 || h != 48 {
+		t.Errorf("dims = %dx%d, want 64x48", w, h)
+	}
+
+	out, err := png.Decode(bytes.NewReader(g.Bytes))
+	if err != nil {
+		t.Fatalf("decode grayscale output: %v", err)
+	}
+	// The fixture paints distinct R/G/B per pixel; after grayscale every channel
+	// must be equal. PNG is lossless, so this comparison is exact.
+	r, gg, b, _ := out.At(20, 10).RGBA()
+	if r != gg || gg != b {
+		t.Errorf("pixel not desaturated: r=%d g=%d b=%d", r>>8, gg>>8, b>>8)
+	}
+}

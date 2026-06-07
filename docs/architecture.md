@@ -71,7 +71,7 @@ structs (`worker-image/internal/broker`, `worker-ocr/.../broker.py`).
   "source_key": "uploads/<job_id>/<filename>",
   "source_mime": "image/png",
   "size_bytes": 12345,
-  "operations": ["resize", "thumbnail", "webp"]
+  "operations": ["resize", "thumbnail", "webp", "grayscale"]
 }
 ```
 

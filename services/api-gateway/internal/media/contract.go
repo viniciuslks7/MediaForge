@@ -48,6 +48,7 @@ const (
 	OpResize    Operation = "resize"
 	OpThumbnail Operation = "thumbnail"
 	OpWebP      Operation = "webp"
+	OpGrayscale Operation = "grayscale"
 )
 
 // JobParams carries optional per-job overrides for the image pipeline. A nil

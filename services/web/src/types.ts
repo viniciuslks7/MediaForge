@@ -3,7 +3,7 @@
 
 export type Kind = 'image' | 'ocr';
 export type Status = 'pending' | 'processing' | 'completed' | 'failed';
-export type Operation = 'resize' | 'thumbnail' | 'webp';
+export type Operation = 'resize' | 'thumbnail' | 'webp' | 'grayscale';
 export type ResizeFormat = 'jpeg' | 'png' | 'webp';
 
 // Optional per-job overrides for the image pipeline (the "params" object in

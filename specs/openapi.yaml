@@ -38,7 +38,7 @@ paths:
                   description: Override the auto-detected kind.
                 operations:
                   type: string
-                  description: Comma-separated image operations, e.g. "resize,thumbnail,webp".
+                  description: Comma-separated image operations, e.g. "resize,thumbnail,webp,grayscale".
                 resize_max_dim:
                   type: integer
                   minimum: 16

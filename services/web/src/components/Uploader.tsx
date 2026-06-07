@@ -9,7 +9,7 @@ export interface ForgeRequest {
   params?: JobParams;
 }
 
-const ALL_OPS: Operation[] = ['resize', 'thumbnail', 'webp'];
+const ALL_OPS: Operation[] = ['resize', 'thumbnail', 'webp', 'grayscale'];
 const FORMATS: ResizeFormat[] = ['jpeg', 'png', 'webp'];
 
 export function Uploader({

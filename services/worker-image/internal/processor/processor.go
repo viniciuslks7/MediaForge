@@ -14,7 +14,7 @@ import (
 
 // Result is one produced image variant.
 type Result struct {
-	Name        string         // logical name: "resized", "thumbnail", "webp"
+	Name        string         // logical name: "resized", "thumbnail", "webp", "grayscale"
 	ContentType string         //
 	Bytes       []byte         //
 	Metadata    map[string]any // width/height etc.
@@ -87,6 +87,12 @@ func (p *Processor) Process(src []byte, operations []string, params Params) ([]R
 				return nil, err
 			}
 			results = append(results, r)
+		case "grayscale":
+			r, err := p.grayscale(img)
+			if err != nil {
+				return nil, err
+			}
+			results = append(results, r)
 		}
 	}
 	return results, nil
@@ -144,6 +150,22 @@ func (p *Processor) webp(img image.Image, maxDim int) (Result, error) {
 	return Result{
 		Name:        "webp",
 		ContentType: "image/webp",
+		Bytes:       buf.Bytes(),
+		Metadata:    dims(dst),
+	}, nil
+}
+
+// grayscale desaturates the image to luminance, preserving its dimensions. It is
+// encoded as lossless PNG so the output is a faithful tonal copy with no resampling.
+func (p *Processor) grayscale(img image.Image) (Result, error) {
+	dst := imaging.Grayscale(img)
+	buf := new(bytes.Buffer)
+	if err := imaging.Encode(buf, dst, imaging.PNG); err != nil {
+		return Result{}, fmt.Errorf("encode grayscale: %w", err)
+	}
+	return Result{
+		Name:        "grayscale",
+		ContentType: "image/png",
 		Bytes:       buf.Bytes(),
 		Metadata:    dims(dst),
 	}, nil
