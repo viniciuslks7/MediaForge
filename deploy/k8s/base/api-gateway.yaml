@@ -18,7 +18,7 @@ spec:
     spec:
       containers:
         - name: api-gateway
-          image: ghcr.io/viniciusoliveira/mediaforge-api-gateway:latest
+          image: ghcr.io/viniciuslks7/mediaforge-api-gateway:latest
           ports:
             - { name: http, containerPort: 8080 }
           envFrom:

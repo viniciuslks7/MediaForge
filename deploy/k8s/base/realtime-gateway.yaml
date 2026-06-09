@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: realtime-gateway
-          image: ghcr.io/viniciusoliveira/mediaforge-realtime-gateway:latest
+          image: ghcr.io/viniciuslks7/mediaforge-realtime-gateway:latest
           ports:
             - { name: http, containerPort: 8090 }
           envFrom:
