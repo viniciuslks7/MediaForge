@@ -102,7 +102,9 @@ services:
     environment:
       OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4317   # Go → OTLP/gRPC
       OTEL_SERVICE_NAME: worker-image
-    ports: ["9102:9102"]
+    # Ephemeral host port: two replicas can't both bind 9102 on the host.
+    # Prometheus scrapes via the compose network (worker-image:9102) regardless.
+    ports: ["9102"]
     deploy:
       replicas: 2
     depends_on:
