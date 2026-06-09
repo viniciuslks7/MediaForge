@@ -15,6 +15,9 @@ RUN npm install --omit=dev
 
 # ---- runtime stage ----
 FROM node:22-alpine AS runtime
+# The runtime only needs the node binary; the bundled npm/corepack CLIs are
+# attack surface and ship their own (sometimes vulnerable) dependency trees.
+RUN rm -rf /usr/local/lib/node_modules /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack /opt/yarn*
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=deps /app/node_modules ./node_modules
