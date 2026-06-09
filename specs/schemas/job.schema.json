@@ -28,7 +28,7 @@
     "size_bytes": { "type": "integer", "minimum": 0 },
     "operations": {
       "type": "array",
-      "items": { "type": "string", "enum": ["resize", "thumbnail", "webp", "grayscale"] },
+      "items": { "type": "string", "enum": ["resize", "thumbnail", "webp", "grayscale", "blur"] },
       "uniqueItems": true,
       "description": "Image transformations to apply (image jobs only)."
     },
@@ -58,6 +58,12 @@
           "minimum": 1,
           "maximum": 100,
           "description": "Encoder quality for lossy formats (jpeg)."
+        },
+        "blur_sigma": {
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 20,
+          "description": "Gaussian blur sigma for the 'blur' operation (default 3)."
         }
       },
       "additionalProperties": false

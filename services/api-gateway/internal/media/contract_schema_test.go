@@ -86,8 +86,8 @@ func TestJobWithParamsConformsToContract(t *testing.T) {
 		SourceKey:  "uploads/9c1f/sample.png",
 		SourceMIME: "image/png",
 		SizeBytes:  12345,
-		Operations: []Operation{OpResize, OpThumbnail},
-		Params:     &JobParams{ResizeMaxDim: 800, ThumbnailSize: 128, ResizeFormat: "webp", Quality: 90},
+		Operations: []Operation{OpResize, OpThumbnail, OpBlur},
+		Params:     &JobParams{ResizeMaxDim: 800, ThumbnailSize: 128, ResizeFormat: "webp", Quality: 90, BlurSigma: 2.5},
 		CreatedAt:  time.Now(),
 		UpdatedAt:  time.Now(),
 	}

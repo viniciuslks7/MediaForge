@@ -142,3 +142,52 @@ func TestProcessGrayscale(t *testing.T) {
 		t.Errorf("pixel not desaturated: r=%d g=%d b=%d", r>>8, gg>>8, b>>8)
 	}
 }
+
+// TestProcessBlur proves the blur op actually softens the image — a hard
+// black/white checkerboard must end up with intermediate tones — while
+// preserving dimensions. PNG output keeps the check exact (no lossy noise).
+func TestProcessBlur(t *testing.T) {
+	// High-contrast 2px checkerboard: any gaussian blur blends the cells, so a
+	// cell-center pixel can no longer be pure black or pure white.
+	img := image.NewRGBA(image.Rect(0, 0, 64, 48))
+	for y := 0; y < 48; y++ {
+		for x := 0; x < 64; x++ {
+			c := color.RGBA{A: 255}
+			if (x/2+y/2)%2 == 0 {
+				c = color.RGBA{R: 255, G: 255, B: 255, A: 255}
+			}
+			img.Set(x, y, c)
+		}
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatalf("encode fixture: %v", err)
+	}
+
+	p := New(Options{})
+	results, err := p.Process(buf.Bytes(), []string{"blur"}, Params{BlurSigma: 2})
+	if err != nil {
+		t.Fatalf("process: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+
+	bl := results[0]
+	if bl.Name != "blur" || bl.ContentType != "image/png" {
+		t.Fatalf("got name=%q content-type=%q", bl.Name, bl.ContentType)
+	}
+	// Blur preserves dimensions — it softens, it does not resample.
+	if w, h := bl.Metadata["width"].(int), bl.Metadata["height"].(int); w != 64 || h != 48 {
+		t.Errorf("dims = %dx%d, want 64x48", w, h)
+	}
+
+	out, err := png.Decode(bytes.NewReader(bl.Bytes))
+	if err != nil {
+		t.Fatalf("decode blur output: %v", err)
+	}
+	r, _, _, _ := out.At(32, 24).RGBA()
+	if v := r >> 8; v == 0 || v == 255 {
+		t.Errorf("pixel still pure black/white (%d) — blur had no effect", v)
+	}
+}

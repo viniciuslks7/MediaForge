@@ -29,6 +29,7 @@ export async function submitMedia(
   if (p?.thumbnail_size) form.append('thumbnail_size', String(p.thumbnail_size));
   if (p?.resize_format) form.append('resize_format', p.resize_format);
   if (p?.quality) form.append('quality', String(p.quality));
+  if (p?.blur_sigma) form.append('blur_sigma', String(p.blur_sigma));
 
   const res = await fetch(`${BASE}/v1/media`, {
     method: 'POST',

@@ -45,10 +45,11 @@ type Job struct {
 // JobParams mirrors the gateway's media.JobParams (the "params" object in the
 // job schema): optional per-job overrides for the image pipeline.
 type JobParams struct {
-	ResizeMaxDim  int    `json:"resize_max_dim,omitempty"`
-	ThumbnailSize int    `json:"thumbnail_size,omitempty"`
-	ResizeFormat  string `json:"resize_format,omitempty"`
-	Quality       int    `json:"quality,omitempty"`
+	ResizeMaxDim  int     `json:"resize_max_dim,omitempty"`
+	ThumbnailSize int     `json:"thumbnail_size,omitempty"`
+	ResizeFormat  string  `json:"resize_format,omitempty"`
+	Quality       int     `json:"quality,omitempty"`
+	BlurSigma     float64 `json:"blur_sigma,omitempty"`
 }
 
 // Event is emitted on media.events as a job changes state.

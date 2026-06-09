@@ -9,7 +9,7 @@ export interface ForgeRequest {
   params?: JobParams;
 }
 
-const ALL_OPS: Operation[] = ['resize', 'thumbnail', 'webp', 'grayscale'];
+const ALL_OPS: Operation[] = ['resize', 'thumbnail', 'webp', 'grayscale', 'blur'];
 const FORMATS: ResizeFormat[] = ['jpeg', 'png', 'webp'];
 
 /** The ingest panel: collects one or more files plus the shared operations and
@@ -28,6 +28,7 @@ export function Uploader({ onForge }: { onForge: (req: ForgeRequest) => void }) 
   const [thumbnailSize, setThumbnailSize] = useState('');
   const [resizeFormat, setResizeFormat] = useState<ResizeFormat | ''>('');
   const [quality, setQuality] = useState('');
+  const [blurSigma, setBlurSigma] = useState('');
 
   const buildParams = (): JobParams | undefined => {
     const p: JobParams = {};
@@ -35,6 +36,7 @@ export function Uploader({ onForge }: { onForge: (req: ForgeRequest) => void }) 
     if (thumbnailSize) p.thumbnail_size = Number(thumbnailSize);
     if (resizeFormat) p.resize_format = resizeFormat;
     if (quality) p.quality = Number(quality);
+    if (blurSigma) p.blur_sigma = Number(blurSigma);
     return Object.keys(p).length ? p : undefined;
   };
 
@@ -250,6 +252,18 @@ export function Uploader({ onForge }: { onForge: (req: ForgeRequest) => void }) 
                     placeholder="85"
                     value={quality}
                     onChange={(e) => setQuality(e.target.value)}
+                  />
+                </label>
+                <label className="adv-field">
+                  <span>Blur sigma (0.5–20)</span>
+                  <input
+                    type="number"
+                    min={0.5}
+                    max={20}
+                    step={0.5}
+                    placeholder="3"
+                    value={blurSigma}
+                    onChange={(e) => setBlurSigma(e.target.value)}
                   />
                 </label>
               </div>

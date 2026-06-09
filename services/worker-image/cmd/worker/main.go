@@ -185,6 +185,7 @@ func processorParams(job broker.Job) processor.Params {
 		ThumbnailSize: job.Params.ThumbnailSize,
 		ResizeFormat:  job.Params.ResizeFormat,
 		Quality:       job.Params.Quality,
+		BlurSigma:     job.Params.BlurSigma,
 	}
 }
 

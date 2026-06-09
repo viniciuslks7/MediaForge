@@ -38,7 +38,7 @@ paths:
                   description: Override the auto-detected kind.
                 operations:
                   type: string
-                  description: Comma-separated image operations, e.g. "resize,thumbnail,webp,grayscale".
+                  description: Comma-separated image operations, e.g. "resize,thumbnail,webp,grayscale,blur".
                 resize_max_dim:
                   type: integer
                   minimum: 16
@@ -58,6 +58,11 @@ paths:
                   minimum: 1
                   maximum: 100
                   description: Encoder quality for lossy formats (jpeg).
+                blur_sigma:
+                  type: number
+                  minimum: 0.5
+                  maximum: 20
+                  description: Gaussian blur sigma for the 'blur' operation (default 3).
               required: [file]
       responses:
         '202':

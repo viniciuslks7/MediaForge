@@ -261,11 +261,27 @@ func parseParams(r *http.Request) *media.JobParams {
 		p.Quality = n
 		set = true
 	}
+	if f, ok := formFloat(r, "blur_sigma"); ok && f >= 0.5 && f <= 20 {
+		p.BlurSigma = f
+		set = true
+	}
 
 	if !set {
 		return nil
 	}
 	return p
+}
+
+func formFloat(r *http.Request, key string) (float64, bool) {
+	v := strings.TrimSpace(r.FormValue(key))
+	if v == "" {
+		return 0, false
+	}
+	f, err := strconv.ParseFloat(v, 64)
+	if err != nil {
+		return 0, false
+	}
+	return f, true
 }
 
 func formInt(r *http.Request, key string) (int, bool) {

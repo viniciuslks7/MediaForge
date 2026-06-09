@@ -19,7 +19,7 @@ func TestParseParams_NoneReturnsNil(t *testing.T) {
 }
 
 func TestParseParams_AllValid(t *testing.T) {
-	p := parseParams(formReq("resize_max_dim=800&thumbnail_size=128&resize_format=webp&quality=90"))
+	p := parseParams(formReq("resize_max_dim=800&thumbnail_size=128&resize_format=webp&quality=90&blur_sigma=2.5"))
 	if p == nil {
 		t.Fatal("expected params, got nil")
 	}
@@ -35,12 +35,15 @@ func TestParseParams_AllValid(t *testing.T) {
 	if p.Quality != 90 {
 		t.Errorf("quality = %d, want 90", p.Quality)
 	}
+	if p.BlurSigma != 2.5 {
+		t.Errorf("blur_sigma = %v, want 2.5", p.BlurSigma)
+	}
 }
 
 func TestParseParams_OutOfRangeDropped(t *testing.T) {
 	// All values are out of the schema's bounds, so none should be set and the
 	// whole result collapses to nil (worker falls back to its defaults).
-	p := parseParams(formReq("resize_max_dim=999999&thumbnail_size=5&quality=0"))
+	p := parseParams(formReq("resize_max_dim=999999&thumbnail_size=5&quality=0&blur_sigma=100"))
 	if p != nil {
 		t.Fatalf("expected nil when all params out of range, got %+v", p)
 	}

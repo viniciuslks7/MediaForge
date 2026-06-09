@@ -49,16 +49,18 @@ const (
 	OpThumbnail Operation = "thumbnail"
 	OpWebP      Operation = "webp"
 	OpGrayscale Operation = "grayscale"
+	OpBlur      Operation = "blur"
 )
 
 // JobParams carries optional per-job overrides for the image pipeline. A nil
 // *JobParams (the common case) means "use the worker's configured defaults".
 // Mirrors the "params" object in specs/schemas/job.schema.json.
 type JobParams struct {
-	ResizeMaxDim  int    `json:"resize_max_dim,omitempty"`
-	ThumbnailSize int    `json:"thumbnail_size,omitempty"`
-	ResizeFormat  string `json:"resize_format,omitempty"` // jpeg | png | webp
-	Quality       int    `json:"quality,omitempty"`       // 1..100, lossy formats
+	ResizeMaxDim  int     `json:"resize_max_dim,omitempty"`
+	ThumbnailSize int     `json:"thumbnail_size,omitempty"`
+	ResizeFormat  string  `json:"resize_format,omitempty"` // jpeg | png | webp
+	Quality       int     `json:"quality,omitempty"`       // 1..100, lossy formats
+	BlurSigma     float64 `json:"blur_sigma,omitempty"`    // 0.5..20, gaussian blur
 }
 
 // Job is the persisted record of a piece of work and the payload published to

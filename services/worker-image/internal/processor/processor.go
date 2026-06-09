@@ -14,7 +14,7 @@ import (
 
 // Result is one produced image variant.
 type Result struct {
-	Name        string         // logical name: "resized", "thumbnail", "webp", "grayscale"
+	Name        string         // logical name: "resized", "thumbnail", "webp", "grayscale", "blur"
 	ContentType string         //
 	Bytes       []byte         //
 	Metadata    map[string]any // width/height etc.
@@ -29,10 +29,11 @@ type Options struct {
 // Params carries optional per-job overrides resolved from the job's "params"
 // object. Zero-valued fields mean "use the processor's configured default".
 type Params struct {
-	ResizeMaxDim  int    // longest edge of the resized variant
-	ThumbnailSize int    // longest edge of the thumbnail
-	ResizeFormat  string // jpeg | png | webp; empty = jpeg
-	Quality       int    // 1..100 for lossy formats; 0 = default
+	ResizeMaxDim  int     // longest edge of the resized variant
+	ThumbnailSize int     // longest edge of the thumbnail
+	ResizeFormat  string  // jpeg | png | webp; empty = jpeg
+	Quality       int     // 1..100 for lossy formats; 0 = default
+	BlurSigma     float64 // gaussian blur sigma; 0 = default (3)
 }
 
 // Processor applies a set of operations to a decoded image.
@@ -89,6 +90,12 @@ func (p *Processor) Process(src []byte, operations []string, params Params) ([]R
 			results = append(results, r)
 		case "grayscale":
 			r, err := p.grayscale(img)
+			if err != nil {
+				return nil, err
+			}
+			results = append(results, r)
+		case "blur":
+			r, err := p.blur(img, params.BlurSigma)
 			if err != nil {
 				return nil, err
 			}
@@ -165,6 +172,26 @@ func (p *Processor) grayscale(img image.Image) (Result, error) {
 	}
 	return Result{
 		Name:        "grayscale",
+		ContentType: "image/png",
+		Bytes:       buf.Bytes(),
+		Metadata:    dims(dst),
+	}, nil
+}
+
+// blur applies a gaussian blur of the given sigma (default 3 when unset),
+// preserving the image dimensions. Encoded as lossless PNG so the only change
+// to the pixels is the blur itself, no resampling or lossy artifacts.
+func (p *Processor) blur(img image.Image, sigma float64) (Result, error) {
+	if sigma <= 0 {
+		sigma = 3
+	}
+	dst := imaging.Blur(img, sigma)
+	buf := new(bytes.Buffer)
+	if err := imaging.Encode(buf, dst, imaging.PNG); err != nil {
+		return Result{}, fmt.Errorf("encode blur: %w", err)
+	}
+	return Result{
+		Name:        "blur",
 		ContentType: "image/png",
 		Bytes:       buf.Bytes(),
 		Metadata:    dims(dst),
