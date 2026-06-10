@@ -19,8 +19,8 @@ jobs:
       run:
         working-directory: services/${{ matrix.service }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
         with:
           go-version: "1.25"
           cache-dependency-path: services/${{ matrix.service }}/go.sum
@@ -36,8 +36,8 @@ jobs:
       run:
         working-directory: services/worker-ocr
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - run: pip install -e ".[dev]"
@@ -51,8 +51,8 @@ jobs:
       run:
         working-directory: services/realtime-gateway
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: "22"
           cache: npm
@@ -66,8 +66,8 @@ jobs:
     name: Contracts (AsyncAPI + OpenAPI)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: "22"
       - name: Validate AsyncAPI
@@ -79,7 +79,7 @@ jobs:
     name: Manifests (kustomize + helm)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install kubeconform (pinned + checksum-verified)
         env:
           KUBECONFORM_VERSION: v0.8.0
@@ -90,7 +90,7 @@ jobs:
           echo "${KUBECONFORM_SHA256}  /tmp/kubeconform.tar.gz" | sha256sum -c -
           tar -xzf /tmp/kubeconform.tar.gz -C /tmp
           sudo mv /tmp/kubeconform /usr/local/bin/
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@v5
         with:
           version: v3.16.3
       - name: Validate kustomize base
@@ -120,10 +120,10 @@ jobs:
       matrix:
         service: [api-gateway, worker-image, worker-ocr, realtime-gateway]
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v4
       - name: Build ${{ matrix.service }} image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: services/${{ matrix.service }}
           load: true
@@ -150,7 +150,7 @@ jobs:
           format: cyclonedx
           output: sbom-${{ matrix.service }}.cdx.json
       - name: Upload SBOM
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: sbom-${{ matrix.service }}
           path: sbom-${{ matrix.service }}.cdx.json
@@ -159,7 +159,7 @@ jobs:
       # Only scanned images get this far (the Trivy gate above fails the job).
       - name: Login to GHCR
         if: env.PUBLISH == 'true'
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -167,7 +167,7 @@ jobs:
       - name: Push ${{ matrix.service }} image
         if: env.PUBLISH == 'true'
         id: push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: services/${{ matrix.service }}
           push: true
@@ -203,7 +203,7 @@ jobs:
     name: IaC & Dockerfile misconfig (Trivy)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       # Report-only for now: surfaces Dockerfile/k8s misconfigurations without
       # gating the build. Flip exit-code to "1" once the backlog is triaged.
       - name: Trivy config scan
