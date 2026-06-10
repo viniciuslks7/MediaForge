@@ -8,6 +8,7 @@ import { History } from './components/History';
 import { SystemPulse } from './components/SystemPulse';
 import { ForgeQueue, type QueueItem } from './components/ForgeQueue';
 import { ForgeStats } from './components/ForgeStats';
+import { Gallery } from './components/Gallery';
 import { getJob, submitMedia, proxiedArtifactUrl } from './api';
 import { RealtimeClient } from './ws';
 import { readHistory, pushHistory, type HistoryEntry } from './history';
@@ -44,6 +45,8 @@ export default function App() {
   const [originalBytes, setOriginalBytes] = useState<number | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>(() => readHistory());
   const [queue, setQueue] = useState<QueueItem[]>([]);
+  // Bumped whenever a job reaches a terminal state, so the gallery re-fetches.
+  const [galleryTick, setGalleryTick] = useState(0);
 
   const rt = useRef<RealtimeClient | null>(null);
   const currentJob = useRef<string | null>(null);
@@ -149,6 +152,7 @@ export default function App() {
         rt.current?.subscribe(job_id);
         const final = await pollUntilDone(job_id);
         patchItem(item.id, { status: final === 'completed' ? 'done' : 'error' });
+        setGalleryTick((n) => n + 1);
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'submission failed';
         setError(msg);
@@ -194,27 +198,36 @@ export default function App() {
     setQ((q) => q.filter((it) => it.status === 'queued' || it.status === 'active'));
   }, [setQ]);
 
-  // Reload a finished job (from history or a queue card) into the main panel.
-  // No original preview survives a reload, so the before/after slider is skipped.
-  const loadJob = useCallback((entry: { job_id: string; trace_id?: string }) => {
-    currentJob.current = entry.job_id;
-    setJobId(entry.job_id);
-    setTraceId(entry.trace_id ?? null);
-    if (originalUrlRef.current) URL.revokeObjectURL(originalUrlRef.current);
-    originalUrlRef.current = null;
-    setOriginalUrl(null);
-    setOriginalBytes(null);
-    setError(null);
-    setEvents([]);
-    setArtifacts([]);
-    setStatus('pending');
-    getJob(entry.job_id)
-      .then(({ job, artifacts: arts }) => {
-        setStatus((s) => advance(s, job.status));
-        setArtifacts(arts);
-      })
-      .catch(() => setError('failed to load job from history'));
-  }, []);
+  // Reload a job (from history, a queue card or the gallery) into the main
+  // panel. No original preview survives a reload, so the before/after slider
+  // is skipped. Gallery jobs can still be in flight (even another client's),
+  // so a non-terminal job keeps polling until it settles.
+  const loadJob = useCallback(
+    (entry: { job_id: string; trace_id?: string }) => {
+      currentJob.current = entry.job_id;
+      setJobId(entry.job_id);
+      setTraceId(entry.trace_id ?? null);
+      if (originalUrlRef.current) URL.revokeObjectURL(originalUrlRef.current);
+      originalUrlRef.current = null;
+      setOriginalUrl(null);
+      setOriginalBytes(null);
+      setError(null);
+      setEvents([]);
+      setArtifacts([]);
+      setStatus('pending');
+      getJob(entry.job_id)
+        .then(({ job, artifacts: arts }) => {
+          setStatus((s) => advance(s, job.status));
+          setArtifacts(arts);
+          if (job.status !== 'completed' && job.status !== 'failed') {
+            rt.current?.subscribe(entry.job_id);
+            void pollUntilDone(entry.job_id);
+          }
+        })
+        .catch(() => setError('failed to load job from history'));
+    },
+    [pollUntilDone],
+  );
 
   const onSelectQueue = useCallback(
     (item: QueueItem) => {
@@ -284,6 +297,12 @@ export default function App() {
         <EventLog events={events} />
         <Artifacts artifacts={artifacts} />
       </div>
+
+      <Gallery
+        activeId={jobId}
+        onSelect={(id) => loadJob({ job_id: id })}
+        refreshKey={galleryTick}
+      />
 
       <footer className="foot">
         <span>MediaForge — Go · Python · TypeScript · RabbitMQ</span>

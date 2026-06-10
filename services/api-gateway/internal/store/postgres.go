@@ -62,6 +62,7 @@ CREATE TABLE IF NOT EXISTS jobs (
 CREATE INDEX IF NOT EXISTS idx_jobs_status     ON jobs (status);
 CREATE INDEX IF NOT EXISTS idx_jobs_kind       ON jobs (kind);
 CREATE INDEX IF NOT EXISTS idx_jobs_created_at ON jobs (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_jobs_created_at_id ON jobs (created_at DESC, id);
 CREATE TABLE IF NOT EXISTS artifacts (
     id           BIGSERIAL PRIMARY KEY,
     job_id       UUID        NOT NULL REFERENCES jobs (id) ON DELETE CASCADE,
@@ -96,6 +97,56 @@ func (s *Store) CreateJob(ctx context.Context, j *media.Job) error {
 		return fmt.Errorf("insert job: %w", err)
 	}
 	return nil
+}
+
+// JobListItem is one row of the gallery listing: the job plus the object key
+// of its thumbnail artifact, when the worker produced one.
+type JobListItem struct {
+	media.Job
+	ThumbKey string
+}
+
+// ListJobs returns one page of jobs (newest first) joined with their thumbnail
+// keys, plus the total job count for pagination. The count rides the page
+// query as a window aggregate so total and rows come from one snapshot.
+func (s *Store) ListJobs(ctx context.Context, limit, offset int) ([]JobListItem, int, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT j.id, j.kind, j.status, j.source_key, j.source_mime, j.size_bytes,
+		       j.operations, j.created_at, j.updated_at, COALESCE(a.object_key, ''),
+		       count(*) OVER ()
+		FROM jobs j
+		LEFT JOIN artifacts a ON a.job_id = j.id AND a.name = 'thumbnail'
+		ORDER BY j.created_at DESC, j.id
+		LIMIT $1 OFFSET $2`, limit, offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("select jobs: %w", err)
+	}
+	defer rows.Close()
+
+	var total int
+	items := make([]JobListItem, 0, limit)
+	for rows.Next() {
+		var it JobListItem
+		var ops []byte
+		if err := rows.Scan(&it.ID, &it.Kind, &it.Status, &it.SourceKey, &it.SourceMIME,
+			&it.SizeBytes, &ops, &it.CreatedAt, &it.UpdatedAt, &it.ThumbKey, &total); err != nil {
+			return nil, 0, fmt.Errorf("scan job row: %w", err)
+		}
+		_ = json.Unmarshal(ops, &it.Operations)
+		items = append(items, it)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+
+	// An offset past the last row returns no rows — and with them, no window
+	// count. Fall back to a plain count so the client can still page back.
+	if len(items) == 0 && offset > 0 {
+		if err := s.pool.QueryRow(ctx, `SELECT count(*) FROM jobs`).Scan(&total); err != nil {
+			return nil, 0, fmt.Errorf("count jobs: %w", err)
+		}
+	}
+	return items, total, nil
 }
 
 // GetJob loads a job and its artifacts by id.

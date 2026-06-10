@@ -46,6 +46,20 @@ export interface JobView {
   artifacts: Artifact[];
 }
 
+// One row of GET /v1/media: the job (exactly job.schema.json, like JobView)
+// plus a presigned thumbnail, when the worker produced one.
+export interface GalleryJob {
+  job: Job;
+  thumb_url?: string;
+}
+
+export interface JobListResponse {
+  jobs: GalleryJob[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export interface SubmitResponse {
   job_id: string;
   kind: Kind;

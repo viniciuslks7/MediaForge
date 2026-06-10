@@ -1,4 +1,4 @@
-import type { JobParams, JobView, Operation, SubmitResponse } from './types';
+import type { JobListResponse, JobParams, JobView, Operation, SubmitResponse } from './types';
 
 // Same-origin: nginx (prod) / vite proxy (dev) forward these to the gateway.
 const BASE = '';
@@ -43,8 +43,16 @@ export async function submitMedia(
   return res.json() as Promise<SubmitResponse>;
 }
 
-export async function getJob(id: string): Promise<JobView> {
-  const res = await fetch(`${BASE}/v1/media/${id}`);
-  if (!res.ok) throw new Error(`job lookup failed (${res.status})`);
-  return res.json() as Promise<JobView>;
+async function getJSON<T>(path: string, what: string): Promise<T> {
+  const res = await fetch(`${BASE}${path}`);
+  if (!res.ok) throw new Error(`${what} failed (${res.status})`);
+  return res.json() as Promise<T>;
+}
+
+export function listJobs(limit: number, offset: number): Promise<JobListResponse> {
+  return getJSON(`/v1/media?limit=${limit}&offset=${offset}`, 'job list');
+}
+
+export function getJob(id: string): Promise<JobView> {
+  return getJSON(`/v1/media/${id}`, 'job lookup');
 }

@@ -599,3 +599,58 @@ body::after {
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
+
+/* server-side job gallery */
+.gallery { margin-top: 34px; }
+.gallery-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.gallery-head h2 {
+  font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--text-dim); margin: 0;
+}
+.gallery-count { color: var(--ember); margin-left: 8px; font-size: 10px; }
+.gallery-pager {
+  display: flex; align-items: center; gap: 8px;
+  font-family: var(--font-mono); font-size: 11px; color: var(--text-dim);
+}
+.gallery-pager button {
+  width: 26px; height: 26px; line-height: 1; cursor: pointer; color: var(--text-dim);
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-sm, 8px);
+  transition: color 0.18s, border-color 0.18s;
+}
+.gallery-pager button:hover:not(:disabled) { color: var(--text); border-color: var(--line-2); }
+.gallery-pager button:disabled { opacity: 0.35; cursor: default; }
+.gallery-retry {
+  font-family: var(--font-mono); font-size: 11px; color: var(--red); cursor: pointer;
+  background: var(--surface-2); border: 1px solid rgba(255, 85, 98, 0.4); border-radius: 100px; padding: 5px 12px;
+}
+.gallery-retry:hover { border-color: var(--red); }
+.gallery-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px;
+}
+.g-card {
+  position: relative; aspect-ratio: 1; overflow: hidden; cursor: pointer; padding: 0;
+  background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--r-md);
+  transition: border-color 0.18s, transform 0.18s;
+}
+.g-card:hover { border-color: var(--line-2); transform: translateY(-2px); }
+.g-card.on { border-color: rgba(255, 165, 59, 0.6); }
+.g-card img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+.g-ph {
+  display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;
+  font-size: 30px; color: var(--text-dim); opacity: 0.5;
+}
+.g-status {
+  position: absolute; top: 6px; right: 6px;
+  font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.05em; text-transform: uppercase;
+  padding: 2px 6px; border-radius: 4px; color: var(--text-dim);
+  background: rgba(0, 0, 0, 0.55); border: 1px solid var(--line);
+}
+.g-status.completed { color: var(--lime); }
+.g-status.failed { color: var(--red); }
+.g-meta {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  display: flex; justify-content: space-between; align-items: center; gap: 6px;
+  padding: 5px 8px; font-family: var(--font-mono); font-size: 10px; color: var(--text-dim);
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.75));
+}
+.g-meta .g-kind { color: var(--ember); text-transform: uppercase; letter-spacing: 0.06em; }

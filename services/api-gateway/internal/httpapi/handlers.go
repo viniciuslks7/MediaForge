@@ -31,6 +31,7 @@ type (
 	JobStore interface {
 		CreateJob(ctx context.Context, j *media.Job) error
 		GetJob(ctx context.Context, id string) (*media.Job, []media.Artifact, error)
+		ListJobs(ctx context.Context, limit, offset int) ([]store.JobListItem, int, error)
 	}
 	ObjectStore interface {
 		Put(ctx context.Context, key, contentType string, r io.Reader, size int64) (int64, error)
@@ -68,6 +69,7 @@ func (s *Server) Router() http.Handler {
 
 	r.Route("/v1/media", func(r chi.Router) {
 		r.With(bearerAuth(s.AuthToken)).Post("/", s.handleSubmit)
+		r.Get("/", s.handleList)
 		r.Get("/{id}", s.handleStatus)
 	})
 
@@ -172,6 +174,10 @@ func (s *Server) handleSubmit(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, resp)
 }
 
+// presignTTL is how long artifact/thumbnail download links stay valid; shared
+// by the status and list endpoints so the two surfaces never drift.
+const presignTTL = 15 * time.Minute
+
 // handleStatus returns the job, its artifacts and presigned download URLs.
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -198,13 +204,73 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]outArtifact, 0, len(artifacts))
 	for _, a := range artifacts {
-		url, _ := s.Objects.PresignedGet(ctx, a.ObjectKey, 15*time.Minute)
+		url, _ := s.Objects.PresignedGet(ctx, a.ObjectKey, presignTTL)
 		out = append(out, outArtifact{Artifact: a, URL: url})
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"job":       job,
 		"artifacts": out,
+	})
+}
+
+// Gallery paging bounds: limit clamps into [1, listMaxLimit] (a polite client
+// paging by an oversized limit must not silently skip rows); junk falls back
+// to the default — same "bounded, never trusted" stance as parseParams.
+const (
+	listDefaultLimit = 24
+	listMaxLimit     = 100
+)
+
+// handleList returns one page of recent jobs (newest first) for the gallery,
+// each with a presigned thumbnail URL when the worker produced one.
+func (s *Server) handleList(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	limit := listDefaultLimit
+	if n, ok := formInt(r, "limit"); ok && n >= 1 {
+		limit = min(n, listMaxLimit)
+	}
+	offset := 0
+	if n, ok := formInt(r, "offset"); ok && n >= 0 {
+		offset = n
+	}
+
+	items, total, err := s.Jobs.ListJobs(ctx, limit, offset)
+	if err != nil {
+		s.Log.ErrorContext(ctx, "list jobs", "err", err)
+		writeError(w, http.StatusInternalServerError, "failed to list jobs")
+		return
+	}
+
+	// Same nested shape as GET /v1/media/{id}: the job object stays exactly
+	// job.schema.json (which forbids extra fields), extras ride alongside.
+	type outJob struct {
+		Job      media.Job `json:"job"`
+		ThumbURL string    `json:"thumb_url,omitempty"`
+	}
+	out := make([]outJob, 0, len(items))
+	presignErrs := 0
+	for _, it := range items {
+		o := outJob{Job: it.Job}
+		if it.ThumbKey != "" {
+			url, err := s.Objects.PresignedGet(ctx, it.ThumbKey, presignTTL)
+			if err != nil {
+				presignErrs++
+			}
+			o.ThumbURL = url
+		}
+		out = append(out, o)
+	}
+	if presignErrs > 0 {
+		s.Log.WarnContext(ctx, "presign thumbnails", "failed", presignErrs, "of", len(items))
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"jobs":   out,
+		"total":  total,
+		"limit":  limit,
+		"offset": offset,
 	})
 }
 
