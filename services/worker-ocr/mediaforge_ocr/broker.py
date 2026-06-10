@@ -57,7 +57,15 @@ class Job:
         )
 
 
-# Handler returns True on success; raising signals failure -> retry/park.
+class PermanentError(Exception):
+    """A failure no retry can fix (e.g. an unreadable payload).
+
+    Mirrors the Go broker's PermanentError: the consumer parks the message on
+    the first attempt instead of cycling it through the retry loop.
+    """
+
+
+# Handler raises to signal failure -> retry/park (PermanentError parks at once).
 Handler = Callable[[Job, int], None]
 
 
@@ -126,7 +134,7 @@ class Broker:
                     ch.basic_ack(method.delivery_tag)
                 except Exception as exc:  # noqa: BLE001 — broker decides retry vs park
                     span.record_exception(exc)
-                    if attempt >= self._max_retries:
+                    if isinstance(exc, PermanentError) or attempt >= self._max_retries:
                         self._park(method.routing_key, body, str(exc))
                         ch.basic_ack(method.delivery_tag)
                     else:

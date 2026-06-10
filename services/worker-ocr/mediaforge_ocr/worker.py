@@ -8,7 +8,7 @@ import sys
 import time
 
 from . import ocr
-from .broker import Broker, Job
+from .broker import Broker, Job, PermanentError
 from .config import Config
 from .db import Database
 from .metrics import JOB_DURATION, JOBS_PROCESSED, WORDS_EXTRACTED, serve
@@ -38,12 +38,24 @@ class Worker:
         outcome = "success"
         try:
             self._process(job, attempt)
-        except Exception:
-            outcome = "parked" if attempt >= self._cfg.max_retries else "retry"
+        except Exception as exc:
+            terminal = isinstance(exc, PermanentError) or attempt >= self._cfg.max_retries
+            outcome = "parked" if terminal else "retry"
+            # The job row and the UI must never be left hanging in
+            # "processing": record the failure before the broker decides
+            # retry vs park (a retry flips it back to processing).
+            self._fail(job, exc)
             raise
         finally:
             JOB_DURATION.observe(time.monotonic() - start)
             JOBS_PROCESSED.labels(outcome=outcome).inc()
+
+    def _fail(self, job: Job, exc: Exception) -> None:
+        try:
+            self._db.set_status(job.job_id, "failed", str(exc))
+            self._emit(job, "failed", 100, str(exc))
+        except Exception:  # noqa: BLE001 — best-effort, never mask the cause
+            log.exception("recording failure for job %s", job.job_id)
 
     def _process(self, job: Job, attempt: int) -> None:
         # Idempotency: a redelivered, already-completed job is a no-op.
@@ -57,9 +69,16 @@ class Worker:
         data = self._store.get(job.source_key)
         self._emit(job, "processing", 40, "running OCR")
 
-        result = ocr.extract_text(
-            data, self._cfg.languages, tesseract_cmd=self._cfg.tesseract_cmd
-        )
+        try:
+            result = ocr.extract_text(
+                data, self._cfg.languages, tesseract_cmd=self._cfg.tesseract_cmd
+            )
+        except PermanentError:
+            raise
+        except Exception as exc:
+            # Extraction is deterministic for a given payload: an unreadable
+            # file fails identically on every attempt, so park immediately.
+            raise PermanentError(f"extract: {exc}") from exc
 
         text_key = f"artifacts/{job.job_id}/text.txt"
         size = self._store.put(text_key, "text/plain; charset=utf-8", result.text.encode("utf-8"))

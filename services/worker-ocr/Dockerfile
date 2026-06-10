@@ -1,11 +1,13 @@
 # OCR worker — needs the Tesseract binary + language data at runtime.
 FROM python:3.12-slim AS base
 
-# System deps: tesseract OCR engine with English + Portuguese language packs.
+# System deps: tesseract OCR engine with English + Portuguese language packs,
+# plus poppler to rasterise PDF pages for OCR (pdf2image backend).
 RUN apt-get update && apt-get install -y --no-install-recommends \
         tesseract-ocr \
         tesseract-ocr-eng \
         tesseract-ocr-por \
+        poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
