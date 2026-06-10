@@ -5,7 +5,7 @@ go 1.25.0
 require (
 	github.com/HugoSmits86/nativewebp v1.1.0
 	github.com/disintegration/imaging v1.6.2
-	github.com/jackc/pgx/v5 v5.7.1
+	github.com/jackc/pgx/v5 v5.9.0
 	github.com/minio/minio-go/v7 v7.0.77
 	github.com/prometheus/client_golang v1.20.5
 	github.com/rabbitmq/amqp091-go v1.10.0
