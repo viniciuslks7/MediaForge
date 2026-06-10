@@ -255,18 +255,39 @@ export function Uploader({ onForge }: { onForge: (req: ForgeRequest) => void }) 
                     onChange={(e) => setQuality(e.target.value)}
                   />
                 </label>
-                <label className="adv-field">
-                  <span>Blur sigma (0.5–20)</span>
+                <label className="adv-field blur-field">
+                  <span>
+                    Blur sigma · <b>{blurSigma || '3 (default)'}</b>
+                  </span>
                   <input
-                    type="number"
+                    type="range"
                     min={0.5}
                     max={20}
                     step={0.5}
-                    placeholder="3"
-                    value={blurSigma}
+                    value={blurSigma === '' ? 3 : Number(blurSigma)}
                     onChange={(e) => setBlurSigma(e.target.value)}
+                    aria-label="Blur sigma, de 0.5 a 20"
                   />
                 </label>
+
+                {/* Live approximation of the chosen sigma using CSS blur — purely
+                    visual; the worker applies the real Gaussian server-side. */}
+                {ops.includes('blur') && preview && (
+                  <div className="blur-preview" aria-hidden>
+                    <figure>
+                      <img src={preview} alt="" />
+                      <figcaption>original</figcaption>
+                    </figure>
+                    <figure>
+                      <img
+                        src={preview}
+                        alt=""
+                        style={{ filter: `blur(${blurSigma === '' ? 3 : Number(blurSigma)}px)` }}
+                      />
+                      <figcaption>blur ≈ σ{blurSigma || '3'}</figcaption>
+                    </figure>
+                  </div>
+                )}
               </div>
             )}
           </div>

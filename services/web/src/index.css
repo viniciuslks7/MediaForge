@@ -662,3 +662,19 @@ body::after {
   border: 1px solid rgba(255, 165, 59, 0.25); border-radius: var(--r-sm, 8px);
   padding: 8px 12px;
 }
+
+/* draggable blur sigma + live css-blur preview */
+.blur-field { grid-column: 1 / -1; }
+.blur-field b { color: var(--ember); font-weight: 700; }
+.blur-field input[type="range"] { width: 100%; accent-color: var(--ember); cursor: ew-resize; background: transparent; border: none; padding: 0; }
+.blur-preview { grid-column: 1 / -1; display: flex; gap: 10px; margin-top: 4px; }
+.blur-preview figure {
+  margin: 0; flex: 1; overflow: hidden;
+  border: 1px solid var(--line); border-radius: var(--r-md); background: var(--bg-2);
+}
+.blur-preview img { width: 100%; height: 110px; object-fit: cover; display: block; }
+.blur-preview figcaption {
+  padding: 5px 9px; font-family: var(--font-mono); font-size: 9px;
+  letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-dim);
+  border-top: 1px solid var(--line);
+}
