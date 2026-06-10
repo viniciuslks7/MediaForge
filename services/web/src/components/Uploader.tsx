@@ -76,6 +76,7 @@ export function Uploader({ onForge }: { onForge: (req: ForgeRequest) => void }) 
   };
 
   const totalBytes = files.reduce((a, f) => a + f.size, 0);
+  const pdfCount = files.filter((f) => f.type === 'application/pdf').length;
   const disabled = files.length === 0 || (kind === 'image' && ops.length === 0);
 
   return (
@@ -275,6 +276,13 @@ export function Uploader({ onForge }: { onForge: (req: ForgeRequest) => void }) 
           {files.length > 1 ? `Forge ${files.length} ▸` : 'Forge ▸'}
         </button>
       </div>
+
+      {kind === 'image' && pdfCount > 0 && (
+        <div className="pdf-note" role="note">
+          ⓘ {pdfCount === 1 ? '1 PDF será forjado' : `${pdfCount} PDFs serão forjados`} via OCR —
+          operações de imagem não se aplicam a PDF
+        </div>
+      )}
     </div>
   );
 }

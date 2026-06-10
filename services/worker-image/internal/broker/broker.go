@@ -6,6 +6,7 @@ package broker
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -122,7 +123,19 @@ func (b *Broker) declareTopology(retryTTL time.Duration) error {
 	return nil
 }
 
-// Handler processes a single job. Returning an error triggers the retry/DLQ path.
+// PermanentError marks a failure that no retry can fix (e.g. an undecodable
+// input). The consumer sends it straight to the parking lot instead of
+// cycling it through the retry queue.
+type PermanentError struct{ Err error }
+
+func (e *PermanentError) Error() string { return e.Err.Error() }
+func (e *PermanentError) Unwrap() error { return e.Err }
+
+// Permanent wraps err so the retry loop parks it immediately.
+func Permanent(err error) error { return &PermanentError{Err: err} }
+
+// Handler processes a single job. Returning an error triggers the retry/DLQ
+// path; wrap it with Permanent to skip retries entirely.
 type Handler func(ctx context.Context, job Job, attempt int) error
 
 // Consume runs the delivery loop on the given queue until ctx is cancelled.
@@ -178,7 +191,8 @@ func (b *Broker) handle(ctx context.Context, d amqp.Delivery, h Handler) {
 
 	if err := h(ctx, job, attempt); err != nil {
 		span.RecordError(err)
-		if attempt >= b.maxRetries {
+		var perm *PermanentError
+		if errors.As(err, &perm) || attempt >= b.maxRetries {
 			_ = b.park(ctx, d, err.Error())
 			_ = d.Ack(false) // terminal — remove from work queue
 			return

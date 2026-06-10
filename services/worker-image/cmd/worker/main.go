@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	_ "image/gif"  // register gif decoder for inputs
 	_ "image/jpeg" // register jpeg decoder for inputs
@@ -113,10 +114,11 @@ func (h *handler) handle(ctx context.Context, job broker.Job, attempt int) (err 
 
 	defer func() {
 		observability.JobDuration.Observe(time.Since(start).Seconds())
+		var perm *broker.PermanentError
 		switch {
 		case err == nil:
 			observability.JobsProcessed.WithLabelValues("success").Inc()
-		case attempt >= 5:
+		case errors.As(err, &perm) || attempt >= 5:
 			observability.JobsProcessed.WithLabelValues("parked").Inc()
 		default:
 			observability.JobsProcessed.WithLabelValues("retry").Inc()
@@ -141,7 +143,10 @@ func (h *handler) handle(ctx context.Context, job broker.Job, attempt int) (err 
 
 	results, err := h.proc.Process(src, job.Operations, processorParams(job))
 	if err != nil {
-		return h.fail(ctx, job, attempt, fmt.Errorf("process: %w", err))
+		// Processing is deterministic for a given input: an undecodable or
+		// untransformable file fails identically on every attempt, so park it
+		// immediately instead of cycling the retry loop.
+		return h.fail(ctx, job, attempt, broker.Permanent(fmt.Errorf("process: %w", err)))
 	}
 
 	for _, r := range results {

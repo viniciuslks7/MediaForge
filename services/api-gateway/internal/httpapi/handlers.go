@@ -126,6 +126,14 @@ func (s *Server) handleSubmit(w http.ResponseWriter, r *http.Request) {
 	params := parseParams(r)
 	jobID := uuid.NewString()
 	contentType := detectContentType(header.Header.Get("Content-Type"), header.Filename)
+
+	// The image worker can only decode raster formats; rejecting the mismatch
+	// here spares the queue a job that would fail deterministically downstream.
+	if kind == media.KindImage && !decodableImage(contentType) {
+		writeError(w, http.StatusBadRequest,
+			fmt.Sprintf("%s cannot go through the image pipeline — submit it with kind=ocr", contentType))
+		return
+	}
 	sourceKey := fmt.Sprintf("uploads/%s/%s", jobID, sanitize(header.Filename))
 
 	size, err := s.Objects.Put(ctx, sourceKey, contentType, file, header.Size)
@@ -373,6 +381,13 @@ func parseOperations(raw string) []media.Operation {
 		}
 	}
 	return ops
+}
+
+// decodableImage reports whether the image worker stands a chance of decoding
+// this content type. Unknown payloads (octet-stream) are allowed through —
+// the worker parks them on the first failed decode.
+func decodableImage(contentType string) bool {
+	return strings.HasPrefix(contentType, "image/") || contentType == "application/octet-stream"
 }
 
 func detectContentType(header, filename string) string {

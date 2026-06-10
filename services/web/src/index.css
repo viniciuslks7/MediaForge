@@ -654,3 +654,11 @@ body::after {
   background: linear-gradient(transparent, rgba(0, 0, 0, 0.75));
 }
 .g-meta .g-kind { color: var(--ember); text-transform: uppercase; letter-spacing: 0.06em; }
+
+/* pdf-rerouted-to-ocr note under the ingest controls */
+.pdf-note {
+  margin-top: 10px; font-family: var(--font-mono); font-size: 11px;
+  color: var(--gold); background: rgba(255, 165, 59, 0.07);
+  border: 1px solid rgba(255, 165, 59, 0.25); border-radius: var(--r-sm, 8px);
+  padding: 8px 12px;
+}

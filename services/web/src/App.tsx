@@ -177,17 +177,21 @@ export default function App() {
 
   const enqueue = useCallback(
     (req: ForgeRequest) => {
-      const items = req.files.map(
-        (file): QueueItem => ({
+      const items = req.files.map((file): QueueItem => {
+        // PDFs can't be decoded by the image worker — route them to the OCR
+        // pipeline regardless of the selected mode (the gateway rejects the
+        // mismatch anyway; this keeps mixed batches flowing).
+        const kind = file.type === 'application/pdf' ? 'ocr' : req.kind;
+        return {
           id: nextId(),
           file,
           fileName: file.name,
-          kind: req.kind,
-          operations: req.operations,
-          params: req.params,
+          kind,
+          operations: kind === 'image' ? req.operations : [],
+          params: kind === 'image' ? req.params : undefined,
           status: 'queued',
-        }),
-      );
+        };
+      });
       setQ((q) => [...q, ...items]);
       void runNext();
     },

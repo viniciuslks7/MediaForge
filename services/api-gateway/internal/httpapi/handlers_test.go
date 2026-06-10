@@ -1,12 +1,15 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -130,6 +133,39 @@ func TestHandleList_BadPagingFallsBack(t *testing.T) {
 	doList(t, listServer(jobs), "/v1/media?limit=abc&offset=xyz")
 	if jobs.gotLimit != 24 || jobs.gotOffset != 0 {
 		t.Errorf("paging = (%d,%d), want defaults (24,0)", jobs.gotLimit, jobs.gotOffset)
+	}
+}
+
+// ---- POST /v1/media kind/content-type mismatch ----
+
+type fakeBus struct{}
+
+func (fakeBus) PublishJSON(context.Context, string, string, any) error { return nil }
+
+func TestHandleSubmit_RejectsPDFOnImagePipeline(t *testing.T) {
+	var body bytes.Buffer
+	mw := multipart.NewWriter(&body)
+	fw, _ := mw.CreateFormFile("file", "encarte.pdf")
+	_, _ = fw.Write([]byte("%PDF-1.7 fake"))
+	_ = mw.WriteField("kind", "image")
+	_ = mw.Close()
+
+	s := listServer(&fakeJobs{})
+	s.Bus = fakeBus{}
+	s.MaxUploadBytes = 1 << 20
+	s.AuthToken = "t"
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/media", &body)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	req.Header.Set("Authorization", "Bearer t")
+	rec := httptest.NewRecorder()
+	s.Router().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 for PDF on the image pipeline", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "kind=ocr") {
+		t.Errorf("error should point the client at kind=ocr, got %q", rec.Body.String())
 	}
 }
 
